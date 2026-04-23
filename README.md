@@ -2,7 +2,7 @@
 
 A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using [SmilingWolf's WD14 ONNX models](https://huggingface.co/SmilingWolf) from HuggingFace.
 
-After generating an image, click **Generate Tags** to analyze it and populate the prompt box with WD14 Danbooru-style tags.
+After loading a reference image, click **Generate Tags** to analyze it and populate the prompt box with WD14 Danbooru-style tags.
 
 ---
 
