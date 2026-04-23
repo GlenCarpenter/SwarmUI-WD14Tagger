@@ -63,7 +63,7 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
 ## Usage
 
-1. Generate an image in SwarmUI as normal.
+1. Load a reference image into the editor.
 2. Click the **Generate Tags** button (gear icon opens settings).
 3. The prompt box is populated with the detected tags.
 4. Optionally adjust the **threshold** or add tags to the **filter list** in the settings panel before tagging.
