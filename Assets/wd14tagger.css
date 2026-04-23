@@ -1,0 +1,143 @@
+/* WD14 Tagger extension styles
+   Mirrors MagicPrompt's prompt-button pattern for visual consistency. */
+
+/* Container floats over the prompt area, anchored to the top-left */
+.wd14tagger.prompt-buttons-container {
+    position: absolute;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+}
+
+/* Main tag button */
+.wd14tagger.prompt-button {
+    padding: 0.2rem 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--emphasis-soft);
+    color: var(--emphasis-text);
+    border: 1px solid var(--button-border);
+    border-radius: 0.7rem;
+    font-weight: bold;
+    font-size: 0.7em;
+    min-width: 2rem;
+    height: 1rem;
+    cursor: pointer;
+}
+
+    .wd14tagger.prompt-button:hover {
+        background-color: color-mix(in srgb, var(--emphasis-soft) 70%, white);
+        color: var(--emphasis-text);
+    }
+
+    .wd14tagger.prompt-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+/* Gear settings button */
+.wd14tagger.prompt-settings-button {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 0.9em;
+    width: 1.5rem;
+    height: -2rem;
+    margin-left: -0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    padding: 0;
+}
+
+    .wd14tagger.prompt-settings-button:hover {
+        opacity: 1;
+    }
+
+
+/* Floating settings panel */
+.wd14tagger.prompt-settings-panel {
+    background-color: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    width: 300px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+.wd14tagger.settings-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+    .wd14tagger.settings-panel-header h3 {
+        margin: 0;
+        font-size: 1em;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+.wd14tagger.panel-close-btn {
+    background: transparent;
+    border: none;
+    font-size: 1.2em;
+    color: var(--text);
+    cursor: pointer;
+    opacity: 0.7;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .wd14tagger.panel-close-btn:hover {
+        opacity: 1;
+    }
+
+.wd14tagger.settings-panel-body {
+    padding: 16px;
+}
+
+.wd14tagger.feature-setting {
+    margin-bottom: 16px;
+}
+
+    .wd14tagger.feature-setting:last-child {
+        margin-bottom: 0;
+    }
+
+    .wd14tagger.feature-setting label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 500;
+        color: var(--text);
+        font-size: 0.9em;
+    }
+
+.wd14tagger.feature-select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--background);
+    color: var(--text);
+    font-size: 0.9em;
+}
+
+.wd14tagger.wd14tagger-filter-input {
+    resize: vertical;
+    min-height: 3rem;
+    font-family: inherit;
+}

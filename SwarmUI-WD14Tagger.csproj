@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <AssemblyName>SwarmUI-WD14Tagger</AssemblyName>
+    <TargetFramework>net8.0</TargetFramework>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <Import Project="../../SwarmUI.extension.props" />
+
+  <ItemGroup Condition="Exists('../../SwarmUI.csproj')">
+    <Reference Remove="SwarmUI" />
+    <ProjectReference Include="../../SwarmUI.csproj">
+      <Private>false</Private>
+      <Properties>_EnableMacOSCodeSign=false;StaticWebAssetsEnabled=false</Properties>
+      <GlobalPropertiesToRemove>BaseIntermediateOutputPath;TargetName</GlobalPropertiesToRemove>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="bin/**/*.cs" />
+    <Compile Remove="obj/**/*.cs" />
+    <Compile Remove="**/._*" />
+  </ItemGroup>
+
+</Project>
