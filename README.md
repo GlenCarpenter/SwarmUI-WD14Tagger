@@ -8,7 +8,7 @@ After generating an image, click **Generate Tags** to analyze it and populate th
 
 ## Features
 
-- One-click tag generation from the current generated image
+- One-click tag generation from a reference image
 - Multiple WD14 model options selectable from a dropdown
 - Configurable confidence threshold (default: 0.35)
 - Tag filter list — exclude specific tags from the output
