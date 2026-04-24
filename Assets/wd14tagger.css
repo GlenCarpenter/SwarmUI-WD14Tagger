@@ -141,3 +141,8 @@
     min-height: 3rem;
     font-family: inherit;
 }
+
+.wd14tagger.threshold-slider {
+    width: 100%;
+    cursor: pointer;
+}

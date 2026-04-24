@@ -51,11 +51,13 @@ async function handleWD14GenerateTags() {
         let selectedModel = modelSelect ? modelSelect.value : 'SmilingWolf/wd-eva02-large-tagger-v3';
         let filterInput = document.getElementById('wd14tagger_filter_input');
         let filterTags = filterInput ? filterInput.value : '';
+        let thresholdInput = document.getElementById('wd14tagger_threshold_input');
+        let threshold = thresholdInput ? parseFloat(thresholdInput.value) : 0.35;
 
         let result = await new Promise((resolve, reject) => {
             genericRequest(
                 'WD14TaggerGenerateTags',
-                { imageBase64: base64Data, modelId: selectedModel, filterTags: filterTags },
+                { imageBase64: base64Data, modelId: selectedModel, threshold: threshold, filterTags: filterTags },
                 (data) => {
                     if (data.success) {
                         resolve(data);
@@ -137,6 +139,11 @@ function addWD14TaggerButtons() {
                 <select id="wd14tagger_model_select" class="wd14tagger feature-select">${optionsHtml}</select>
             </div>
             <div class="wd14tagger feature-setting">
+                <label for="wd14tagger_threshold_input">Confidence threshold: <span id="wd14tagger_threshold_display">0.35</span></label>
+                <input id="wd14tagger_threshold_input" type="range" min="0" max="1" step="0.01" value="0.35" class="wd14tagger threshold-slider" />
+                <div class="wd14tagger setting-description">Tags below this confidence score are excluded (0.0–1.0).</div>
+            </div>
+            <div class="wd14tagger feature-setting">
                 <label for="wd14tagger_filter_input">Filter tags (comma-separated):</label>
                 <textarea id="wd14tagger_filter_input" class="wd14tagger feature-select wd14tagger-filter-input" rows="3" placeholder="e.g. realistic, watermark, signature"></textarea>
                 <div class="wd14tagger setting-description">Tags in this list will be removed from the output.</div>
@@ -148,6 +155,7 @@ function addWD14TaggerButtons() {
     // Restore saved settings from localStorage
     let savedModel = localStorage.getItem('wd14tagger_model');
     let savedFilters = localStorage.getItem('wd14tagger_filters');
+    let savedThreshold = localStorage.getItem('wd14tagger_threshold');
     if (savedModel) {
         let modelSel = settingsPanel.querySelector('#wd14tagger_model_select');
         if (modelSel) {
@@ -160,6 +168,12 @@ function addWD14TaggerButtons() {
             filterIn.value = savedFilters;
         }
     }
+    if (savedThreshold !== null) {
+        let slider = settingsPanel.querySelector('#wd14tagger_threshold_input');
+        let display = settingsPanel.querySelector('#wd14tagger_threshold_display');
+        if (slider) { slider.value = savedThreshold; }
+        if (display) { display.textContent = parseFloat(savedThreshold).toFixed(2); }
+    }
 
     // Persist changes to localStorage
     settingsPanel.addEventListener('change', function() {
@@ -171,6 +185,12 @@ function addWD14TaggerButtons() {
     settingsPanel.addEventListener('input', function(e) {
         if (e.target.id === 'wd14tagger_filter_input') {
             localStorage.setItem('wd14tagger_filters', e.target.value);
+        }
+        if (e.target.id === 'wd14tagger_threshold_input') {
+            let val = parseFloat(e.target.value).toFixed(2);
+            localStorage.setItem('wd14tagger_threshold', val);
+            let display = settingsPanel.querySelector('#wd14tagger_threshold_display');
+            if (display) { display.textContent = val; }
         }
     });
 
