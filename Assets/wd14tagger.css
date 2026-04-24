@@ -142,7 +142,11 @@
     font-family: inherit;
 }
 
-.wd14tagger.threshold-slider {
-    width: 100%;
-    cursor: pointer;
+.wd14tagger.threshold-pct-label {
+    float: right;
+    font-size: 0.9em;
+    color: var(--text);
+    opacity: 0.7;
+    margin-right: 0.2rem;
 }
+

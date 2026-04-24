@@ -52,7 +52,7 @@ async function handleWD14GenerateTags() {
         let filterInput = document.getElementById('wd14tagger_filter_input');
         let filterTags = filterInput ? filterInput.value : '';
         let thresholdInput = document.getElementById('wd14tagger_threshold_input');
-        let threshold = thresholdInput ? parseFloat(thresholdInput.value) : 0.35;
+        let threshold = thresholdInput ? (parseFloat(thresholdInput.value) / 100) : 0.35;
 
         let result = await new Promise((resolve, reject) => {
             genericRequest(
@@ -139,9 +139,13 @@ function addWD14TaggerButtons() {
                 <select id="wd14tagger_model_select" class="wd14tagger feature-select">${optionsHtml}</select>
             </div>
             <div class="wd14tagger feature-setting">
-                <label for="wd14tagger_threshold_input">Confidence threshold: <span id="wd14tagger_threshold_display">0.35</span></label>
-                <input id="wd14tagger_threshold_input" type="range" min="0" max="1" step="0.01" value="0.35" class="wd14tagger threshold-slider" />
-                <div class="wd14tagger setting-description">Tags below this confidence score are excluded (0.0–1.0).</div>
+                <label for="wd14tagger_threshold_number">Confidence threshold percentage:</label>
+                <input id="wd14tagger_threshold_number" type="number" min="0" max="100" step="1" value="35" class="auto-slider-number" autocomplete="off"><span class="wd14tagger threshold-pct-label">%</span>
+                <br>
+                <div class="auto-slider-range-wrapper" style="--range-value: 35%">
+                    <input id="wd14tagger_threshold_input" type="range" min="0" max="100" step="1" value="35" class="auto-slider-range" oninput="updateRangeStyle(this)" onchange="updateRangeStyle(this)">
+                </div>
+                <div class="wd14tagger setting-description">Tags below this confidence score are excluded (0–100%).</div>
             </div>
             <div class="wd14tagger feature-setting">
                 <label for="wd14tagger_filter_input">Filter tags (comma-separated):</label>
@@ -169,10 +173,13 @@ function addWD14TaggerButtons() {
         }
     }
     if (savedThreshold !== null) {
+        // Migrate old decimal values (0.0–1.0) stored before the percentage change
+        let pct = parseFloat(savedThreshold);
+        if (pct <= 1) { pct = Math.round(pct * 100); }
         let slider = settingsPanel.querySelector('#wd14tagger_threshold_input');
-        let display = settingsPanel.querySelector('#wd14tagger_threshold_display');
-        if (slider) { slider.value = savedThreshold; }
-        if (display) { display.textContent = parseFloat(savedThreshold).toFixed(2); }
+        let numInput = settingsPanel.querySelector('#wd14tagger_threshold_number');
+        if (slider) { slider.value = pct; updateRangeStyle(slider); }
+        if (numInput) { numInput.value = pct; }
     }
 
     // Persist changes to localStorage
@@ -187,15 +194,22 @@ function addWD14TaggerButtons() {
             localStorage.setItem('wd14tagger_filters', e.target.value);
         }
         if (e.target.id === 'wd14tagger_threshold_input') {
-            let val = parseFloat(e.target.value).toFixed(2);
+            let val = Math.round(parseFloat(e.target.value));
             localStorage.setItem('wd14tagger_threshold', val);
-            let display = settingsPanel.querySelector('#wd14tagger_threshold_display');
-            if (display) { display.textContent = val; }
+            let numInput = settingsPanel.querySelector('#wd14tagger_threshold_number');
+            if (numInput) { numInput.value = val; }
+        }
+        if (e.target.id === 'wd14tagger_threshold_number') {
+            let val = Math.min(100, Math.max(0, Math.round(parseFloat(e.target.value) || 0)));
+            localStorage.setItem('wd14tagger_threshold', val);
+            let slider = settingsPanel.querySelector('#wd14tagger_threshold_input');
+            if (slider) { slider.value = val; updateRangeStyle(slider); }
         }
     });
 
     function positionSettingsPanel() {
         let rect = settingsBtn.getBoundingClientRect();
+        let panelWidth = 300; // matches CSS width
         settingsPanel.style.position = 'fixed';
         settingsPanel.style.zIndex = '10000';
         // Measure panel height after making it briefly visible but off-screen
@@ -204,10 +218,23 @@ function addWD14TaggerButtons() {
         let panelHeight = settingsPanel.offsetHeight;
         settingsPanel.style.display = 'none';
         settingsPanel.style.visibility = '';
-        // Position above the gear button, right-aligned to it
-        settingsPanel.style.top = (rect.top - panelHeight - 10) + 'px';
-        settingsPanel.style.right = (window.innerWidth - rect.right) + 'px';
-        settingsPanel.style.left = '';
+        // Position to the top-right of the gear button so it stays visible when the sidebar is collapsed
+        let leftPos = rect.right + 5;
+        // Clamp so panel doesn't overflow off the right edge of the viewport
+        if (leftPos + panelWidth > window.innerWidth - 8) {
+            leftPos = window.innerWidth - panelWidth - 8;
+        }
+        let topPos = rect.top;
+        // Clamp so panel doesn't overflow off the bottom of the viewport
+        if (topPos + panelHeight > window.innerHeight - 8) {
+            topPos = window.innerHeight - panelHeight - 8;
+            if (topPos < 8) {
+                topPos = 8;
+            }
+        }
+        settingsPanel.style.top = topPos + 'px';
+        settingsPanel.style.left = leftPos + 'px';
+        settingsPanel.style.right = '';
     }
 
     settingsBtn.addEventListener('click', function(e) {
