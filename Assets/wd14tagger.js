@@ -33,9 +33,13 @@ async function handleWD14GenerateTags() {
 
     let button = document.getElementById('wd14tagger_generate_btn');
     let modelSelect = document.getElementById('wd14tagger_model_select');
+    let btnLabel = button ? button.querySelector('.wd14tagger-btn-label') : null;
 
     if (button) {
         button.disabled = true;
+    }
+    if (btnLabel) {
+        btnLabel.innerHTML = ' Generating<span class="wd14tagger-ellipsis"><span>.</span><span>.</span><span>.</span></span>';
     }
 
     try {
@@ -103,6 +107,9 @@ async function handleWD14GenerateTags() {
         if (button) {
             button.disabled = false;
         }
+        if (btnLabel) {
+            btnLabel.innerHTML = ' Generate Tags';
+        }
     }
 }
 
@@ -130,7 +137,7 @@ function addWD14TaggerButtons() {
     let generateBtn = document.createElement('button');
     generateBtn.id = 'wd14tagger_generate_btn';
     generateBtn.className = 'wd14tagger prompt-button';
-    generateBtn.innerHTML = '\uD83C\uDFF7\uFE0F Generate Tags';
+    generateBtn.innerHTML = '<span class="wd14tagger-btn-icon">\uD83C\uDFF7\uFE0F</span><span class="wd14tagger-btn-label"> Generate Tags</span>';
     generateBtn.title = 'Analyze current image and generate WD14 tags';
     generateBtn.addEventListener('click', handleWD14GenerateTags);
 
