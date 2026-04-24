@@ -38,7 +38,7 @@ After loading a reference image, click **Generate Tags** to analyze it and popul
   - `numpy`
   - `huggingface_hub`
 
-The extensions will automatically install dependencies, but if you need to manually install run:
+The extension will automatically install dependencies, but if you need to manually install run:
 
 ```bash
 pip install onnxruntime Pillow numpy huggingface_hub
