@@ -4,6 +4,7 @@
 /* Container floats over the prompt area, anchored to the top-left */
 .wd14tagger.prompt-buttons-container {
     position: absolute;
+    z-index: 10;
     display: flex;
     align-items: flex-start;
     gap: 1rem;
