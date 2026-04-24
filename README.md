@@ -54,7 +54,7 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
    ```bash
    cd SwarmUI/src/Extensions
-   git clone https://github.com/your-username/SwarmUI-WD14Tagger
+   git clone https://github.com/GlenCarpenter/SwarmUI-WD14Tagger.git
    ```
 
 2. Rebuild and restart SwarmUI. The extension will be picked up automatically.
