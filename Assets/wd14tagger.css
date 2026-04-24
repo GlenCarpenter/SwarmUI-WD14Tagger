@@ -151,3 +151,18 @@
     margin-right: 0.2rem;
 }
 
+.wd14tagger.insert-mode-group {
+    display: flex;
+    gap: 1rem;
+    margin-top: 4px;
+}
+
+    .wd14tagger.insert-mode-group label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-weight: normal;
+        margin-bottom: 0;
+        cursor: pointer;
+    }
+

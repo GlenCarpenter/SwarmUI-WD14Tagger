@@ -73,7 +73,19 @@ async function handleWD14GenerateTags() {
         let promptBox = document.getElementById('alt_prompt_textbox');
         if (promptBox) {
             if (result.tags) {
-                promptBox.value = result.tags;
+                let insertModeEl = document.querySelector('input[name="wd14tagger_insert_mode"]:checked');
+                let insertMode = insertModeEl ? insertModeEl.value : 'replace';
+                if (insertMode === 'prepend') {
+                    let existing = promptBox.value;
+                    promptBox.value = existing.trim() ? result.tags + ', ' + existing : result.tags;
+                }
+                else if (insertMode === 'append') {
+                    let existing = promptBox.value;
+                    promptBox.value = existing.trim() ? existing + ', ' + result.tags : result.tags;
+                }
+                else {
+                    promptBox.value = result.tags;
+                }
                 triggerChangeFor(promptBox);
                 promptBox.focus();
                 promptBox.setSelectionRange(0, promptBox.value.length);
@@ -158,6 +170,14 @@ function addWD14TaggerButtons() {
                 <textarea id="wd14tagger_filter_input" class="wd14tagger feature-select wd14tagger-filter-input" rows="3" placeholder="e.g. realistic, watermark, signature"></textarea>
                 <div class="wd14tagger setting-description">Tags in this list will be removed from the output.</div>
             </div>
+            <div class="wd14tagger feature-setting">
+                <label>Insert Tags:</label>
+                <div class="wd14tagger insert-mode-group">
+                    <label><input type="radio" name="wd14tagger_insert_mode" value="replace" checked> Replace</label>
+                    <label><input type="radio" name="wd14tagger_insert_mode" value="prepend"> Prepend</label>
+                    <label><input type="radio" name="wd14tagger_insert_mode" value="append"> Append</label>
+                </div>
+            </div>
         </div>
     `;
     document.body.appendChild(settingsPanel);
@@ -178,6 +198,11 @@ function addWD14TaggerButtons() {
             filterIn.value = savedFilters;
         }
     }
+    let savedInsertMode = localStorage.getItem('wd14tagger_insert_mode') || 'replace';
+    let insertRadio = settingsPanel.querySelector(`input[name="wd14tagger_insert_mode"][value="${savedInsertMode}"]`);
+    if (insertRadio) {
+        insertRadio.checked = true;
+    }
     if (savedThreshold !== null) {
         // Migrate old decimal values (0.0–1.0) stored before the percentage change
         let pct = parseFloat(savedThreshold);
@@ -193,6 +218,10 @@ function addWD14TaggerButtons() {
         let modelSel = settingsPanel.querySelector('#wd14tagger_model_select');
         if (modelSel) {
             localStorage.setItem('wd14tagger_model', modelSel.value);
+        }
+        let checkedMode = settingsPanel.querySelector('input[name="wd14tagger_insert_mode"]:checked');
+        if (checkedMode) {
+            localStorage.setItem('wd14tagger_insert_mode', checkedMode.value);
         }
     });
     settingsPanel.addEventListener('input', function(e) {
