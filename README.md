@@ -2,13 +2,13 @@
 
 A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using [SmilingWolf's WD14 ONNX models](https://huggingface.co/SmilingWolf) from HuggingFace.
 
-After generating an image, click **Generate Tags** to analyze it and populate the prompt box with WD14 Danbooru-style tags.
+After loading a reference image, click **Generate Tags** to analyze it and populate the prompt box with WD14 Danbooru-style tags.
 
 ---
 
 ## Features
 
-- One-click tag generation from the current generated image
+- One-click tag generation from a reference image
 - Multiple WD14 model options selectable from a dropdown
 - Configurable confidence threshold (default: 0.35)
 - Tag filter list — exclude specific tags from the output
@@ -63,7 +63,7 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
 ## Usage
 
-1. Generate an image in SwarmUI as normal.
+1. Load a reference image into the editor.
 2. Click the **Generate Tags** button (gear icon opens settings).
 3. The prompt box is populated with the detected tags.
 4. Optionally adjust the **threshold** or add tags to the **filter list** in the settings panel before tagging.
