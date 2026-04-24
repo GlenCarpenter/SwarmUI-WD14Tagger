@@ -45,7 +45,7 @@ public static class WD14TaggerAPI
     /// Runs <c>pip install -r requirements.txt</c> once per process lifetime using the resolved
     /// Python executable, so all required packages are present before the first inference call.
     /// </summary>
-    private static async Task EnsureDependenciesAsync(string pythonExe)
+    private static async Task EnsureDependenciesAsync()
     {
         if (_dependenciesEnsured) return;
         await _depLock.WaitAsync();
@@ -62,11 +62,27 @@ public static class WD14TaggerAPI
             Logs.Info("WD14Tagger: Checking/installing Python dependencies...");
             ProcessStartInfo psi = new()
             {
-                FileName = pythonExe,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
+            // Mirror PythonLaunchHelper.LaunchGeneric's Python discovery so pip installs into the correct isolated environment
+            if (File.Exists("./dlbackend/comfy/python_embeded/python.exe"))
+            {
+                psi.FileName = Path.GetFullPath("./dlbackend/comfy/python_embeded/python.exe");
+                psi.WorkingDirectory = Path.GetFullPath("./dlbackend/comfy/");
+                psi.Environment["PATH"] = PythonLaunchHelper.ReworkPythonPaths(Path.GetFullPath("./dlbackend/comfy/python_embeded"));
+            }
+            else if (File.Exists("./dlbackend/ComfyUI/venv/bin/python"))
+            {
+                psi.FileName = Path.GetFullPath("./dlbackend/ComfyUI/venv/bin/python");
+                psi.Environment["PATH"] = PythonLaunchHelper.ReworkPythonPaths(Path.GetFullPath("./dlbackend/ComfyUI/venv/bin"));
+            }
+            else
+            {
+                psi.FileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "python" : "python3";
+            }
+            PythonLaunchHelper.CleanEnvironmentOfPythonMess(psi, "WD14Tagger: ");
             psi.ArgumentList.Add("-m");
             psi.ArgumentList.Add("pip");
             psi.ArgumentList.Add("install");
@@ -105,8 +121,7 @@ public static class WD14TaggerAPI
         float threshold = 0.35f,
         string filterTags = "")
     {
-        string pythonExe = FindPythonExe();
-        await EnsureDependenciesAsync(pythonExe);
+        await EnsureDependenciesAsync();
 
         // Validate inputs to prevent injection
         if (string.IsNullOrWhiteSpace(imageBase64))
@@ -146,25 +161,13 @@ public static class WD14TaggerAPI
             string scriptPath = Path.GetFullPath($"{WD14TaggerExtension.ExtFolder}wd14_tagger_inference.py");
             string modelDir = Path.GetFullPath("Models/wd14_tagger");
 
-            ProcessStartInfo psi = new()
-            {
-                FileName = pythonExe,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            // Use ArgumentList for safe argument passing (no shell injection risk)
-            psi.ArgumentList.Add(scriptPath);
-            psi.ArgumentList.Add("--image_path");
-            psi.ArgumentList.Add(tempImagePath);
-            psi.ArgumentList.Add("--repo_id");
-            psi.ArgumentList.Add(modelId);
-            psi.ArgumentList.Add("--model_dir");
-            psi.ArgumentList.Add(modelDir);
-            psi.ArgumentList.Add("--threshold");
-            psi.ArgumentList.Add(threshold.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
-
-            using Process process = Process.Start(psi);
+            using Process process = PythonLaunchHelper.LaunchGeneric(scriptPath, false,
+            [
+                "--image_path", tempImagePath,
+                "--repo_id", modelId,
+                "--model_dir", modelDir,
+                "--threshold", threshold.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+            ]);
             Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
             Task<string> stderrTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync(CancellationToken.None);
@@ -235,28 +238,4 @@ public static class WD14TaggerAPI
         }
     }
 
-    /// <summary>Locates the Python executable, preferring ComfyUI's embedded Python then system Python.</summary>
-    private static string FindPythonExe()
-    {
-        // Windows: ComfyUI embedded Python
-        string winEmbed = Path.GetFullPath("dlbackend/comfy/python_embeded/python.exe");
-        if (File.Exists(winEmbed))
-        {
-            return winEmbed;
-        }
-        // Linux: ComfyUI embedded Python
-        string linuxEmbed = Path.GetFullPath("dlbackend/comfy/python_embeded/python3");
-        if (File.Exists(linuxEmbed))
-        {
-            return linuxEmbed;
-        }
-        // Linux: ComfyUI venv
-        string linuxVenv = Path.GetFullPath("dlbackend/comfy/venv/bin/python3");
-        if (File.Exists(linuxVenv))
-        {
-            return linuxVenv;
-        }
-        // System fallback
-        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "python" : "python3";
-    }
 }
