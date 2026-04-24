@@ -71,11 +71,16 @@ async function handleWD14GenerateTags() {
         });
 
         let promptBox = document.getElementById('alt_prompt_textbox');
-        if (promptBox && result.tags) {
-            promptBox.value = result.tags;
-            triggerChangeFor(promptBox);
-            promptBox.focus();
-            promptBox.setSelectionRange(0, promptBox.value.length);
+        if (promptBox) {
+            if (result.tags) {
+                promptBox.value = result.tags;
+                triggerChangeFor(promptBox);
+                promptBox.focus();
+                promptBox.setSelectionRange(0, promptBox.value.length);
+            }
+            else {
+                showError('WD14 Tagger: No tags found above the current threshold.');
+            }
         }
     }
     catch (err) {

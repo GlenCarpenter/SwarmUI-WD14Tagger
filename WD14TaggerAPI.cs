@@ -171,21 +171,36 @@ public static class WD14TaggerAPI
             string stdout = (await stdoutTask).Trim();
             string stderr = (await stderrTask).Trim();
 
-            // The script writes intermediate progress lines ({"progress": "..."}) then one result line
-            // Find the last valid JSON result line
+            // The script writes intermediate JSON lines: {"info": ...}, {"error": ...}, {"progress": ...}, then {"success": ...}
             string resultLine = null;
             foreach (string line in stdout.Split('\n'))
             {
                 string trimmed = line.Trim();
-                if (trimmed.StartsWith("{") && trimmed.Contains("\"success\""))
+                if (!trimmed.StartsWith("{")) { continue; }
+                JObject parsed;
+                try { parsed = JObject.Parse(trimmed); }
+                catch { continue; }
+                if (parsed.ContainsKey("info"))
+                {
+                    Logs.Info($"WD14Tagger: {parsed["info"].Value<string>()}");
+                }
+                else if (parsed.ContainsKey("error"))
+                {
+                    Logs.Error($"WD14Tagger: {parsed["error"].Value<string>()}");
+                }
+                else if (parsed.ContainsKey("success"))
                 {
                     resultLine = trimmed;
                 }
             }
+            if (!string.IsNullOrWhiteSpace(stderr))
+            {
+                Logs.Warning($"WD14Tagger stderr: {stderr}");
+            }
 
             if (string.IsNullOrWhiteSpace(resultLine))
             {
-                Logs.Warning($"WD14Tagger: Python script produced no result. stdout='{stdout}' stderr='{stderr}'");
+                Logs.Warning($"WD14Tagger: Python script produced no result. stdout='{stdout}'");
                 return new JObject { ["success"] = false, ["error"] = "Tagger produced no output. Check server logs for details." };
             }
 

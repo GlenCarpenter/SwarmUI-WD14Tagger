@@ -18,8 +18,12 @@ from huggingface_hub import hf_hub_download
 IMAGE_SIZE = 448
 
 
-def preprocess_image(image_path: str) -> np.ndarray:
-    """Load and preprocess an image for the WD14 tagger ONNX model."""
+def preprocess_image(image_path: str, bgr: bool = True) -> np.ndarray:
+    """Load and preprocess an image for the WD14 tagger ONNX model.
+
+    When bgr=True (SmilingWolf/NHWC models): pads to square, resizes with BICUBIC, returns BGR float32 0-255.
+    When bgr=False (PixAI/NCHW models): resizes directly with BILINEAR, returns RGB float32 0-255.
+    """
     image = Image.open(image_path)
 
     # Handle transparency with white background compositing
@@ -31,24 +35,30 @@ def preprocess_image(image_path: str) -> np.ndarray:
     elif image.mode != "RGB":
         image = image.convert("RGB")
 
-    img = np.array(image)
-    img = img[:, :, ::-1]  # RGB -> BGR
+    if bgr:
+        img = np.array(image)
+        img = img[:, :, ::-1]  # RGB -> BGR
 
-    # Pad shorter side to make a square
-    h, w = img.shape[:2]
-    size = max(h, w)
-    pad_y = size - h
-    pad_x = size - w
-    img = np.pad(
-        img,
-        ((pad_y // 2, pad_y - pad_y // 2), (pad_x // 2, pad_x - pad_x // 2), (0, 0)),
-        mode="constant",
-        constant_values=255,
-    )
+        # Pad shorter side to make a square
+        h, w = img.shape[:2]
+        size = max(h, w)
+        pad_y = size - h
+        pad_x = size - w
+        img = np.pad(
+            img,
+            ((pad_y // 2, pad_y - pad_y // 2), (pad_x // 2, pad_x - pad_x // 2), (0, 0)),
+            mode="constant",
+            constant_values=255,
+        )
 
-    # Resize to model input size (BICUBIC, back to RGB for PIL then back to BGR)
-    img_pil = Image.fromarray(img[:, :, ::-1]).resize((IMAGE_SIZE, IMAGE_SIZE), Image.BICUBIC)
-    img = np.array(img_pil)[:, :, ::-1].astype(np.float32)
+        # Resize to model input size (BICUBIC, back to RGB for PIL then back to BGR)
+        img_pil = Image.fromarray(img[:, :, ::-1]).resize((IMAGE_SIZE, IMAGE_SIZE), Image.BICUBIC)
+        img = np.array(img_pil)[:, :, ::-1].astype(np.float32)
+    else:
+        # Direct resize to model input size without BGR conversion (NCHW models use RGB)
+        img_pil = image.resize((IMAGE_SIZE, IMAGE_SIZE), Image.BILINEAR)
+        img = np.array(img_pil).astype(np.float32)
+
     return img
 
 
@@ -74,11 +84,26 @@ def load_tags(model_path: str):
     csv_path = os.path.join(model_path, "selected_tags.csv")
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
-        rows = list(reader)[1:]  # skip header: tag_id,name,category,count
+        all_rows = list(reader)
 
-    rating_count = sum(1 for row in rows if row[2] == "9")
-    general_tags = [row[1] for row in rows if row[2] == "0"]
-    character_tags = [row[1] for row in rows if row[2] == "4"]
+    header = all_rows[0] if all_rows else []
+    rows = all_rows[1:]
+
+    # Detect column indices from header (SmilingWolf: tag_id,name,category,count;
+    # PixAI: id,tag_id,name,category,count,ips)
+    header_lower = [h.lower().strip() for h in header]
+    try:
+        name_idx = header_lower.index("name")
+        cat_idx = header_lower.index("category")
+    except ValueError:
+        # Fallback to legacy SmilingWolf positional layout
+        name_idx, cat_idx = 1, 2
+
+    log_info(f"CSV: header={header}, {len(rows)} data rows, name_col={name_idx}, category_col={cat_idx}")
+
+    rating_count = sum(1 for row in rows if len(row) > cat_idx and row[cat_idx] == "9")
+    general_tags = [row[name_idx] for row in rows if len(row) > cat_idx and row[cat_idx] == "0"]
+    character_tags = [row[name_idx] for row in rows if len(row) > cat_idx and row[cat_idx] == "4"]
     return general_tags, character_tags, rating_count
 
 
@@ -87,12 +112,25 @@ def remove_underscore(tag: str) -> str:
     return tag.replace("_", " ") if len(tag) > 3 else tag
 
 
+def log_info(msg: str):
+    """Emit an info log line to stdout for the C# host to forward."""
+    print(json.dumps({"info": msg}), flush=True)
+
+
+def log_error(msg: str):
+    """Emit an error log line to stdout for the C# host to forward."""
+    print(json.dumps({"error": msg}), flush=True)
+
+
 def run_inference(image_path: str, repo_id: str, model_dir: str, threshold: float) -> str:
     """Run WD14 tagger inference and return comma-separated tag string."""
     import onnxruntime as ort
 
+    log_info(f"Starting inference: model={repo_id}, threshold={threshold}")
+
     model_path = ensure_model(repo_id, model_dir)
     onnx_path = os.path.join(model_path, "model.onnx")
+    log_info(f"Model path: {model_path}")
 
     # Pick best available execution provider
     available = ort.get_available_providers()
@@ -102,23 +140,46 @@ def run_inference(image_path: str, repo_id: str, model_dir: str, threshold: floa
         providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
     else:
         providers = ["CPUExecutionProvider"]
+    log_info(f"Using providers: {providers}")
 
     sess = ort.InferenceSession(onnx_path, providers=providers)
     input_info = sess.get_inputs()[0]
     input_name = input_info.name
-
-    img = preprocess_image(image_path)
-    # Detect channel order from model input shape: NCHW has shape[1]==3, NHWC has shape[3]==3
     input_shape = input_info.shape
+    input_dtype = input_info.type
+    log_info(f"Model input: name={input_name}, shape={input_shape}, dtype={input_dtype}")
+
+    # Detect channel order from model input shape: NCHW has shape[1]==3, NHWC has shape[3]==3
     if len(input_shape) == 4 and input_shape[1] == 3:
-        # NCHW: transpose HWC -> CHW before adding batch dim
+        # NCHW model (e.g. PixAI): RGB input, normalized to [-1, 1], channels-first
+        log_info("Detected NCHW layout — using RGB preprocessing with [-1,1] normalization")
+        img = preprocess_image(image_path, bgr=False)
+        img = (img / 255.0 - 0.5) / 0.5
         img_batch = np.expand_dims(np.transpose(img, (2, 0, 1)), 0)
     else:
-        # NHWC (default SmilingWolf format)
+        # NHWC model (SmilingWolf): BGR input, 0-255 range, channels-last
+        log_info("Detected NHWC layout — using BGR preprocessing with 0-255 range")
+        img = preprocess_image(image_path)
         img_batch = np.expand_dims(img, 0)
-    probs = sess.run(None, {input_name: img_batch})[0][0]
+    log_info(f"Input batch shape: {img_batch.shape}, dtype={img_batch.dtype}, min={float(img_batch.min()):.3f}, max={float(img_batch.max()):.3f}")
+
+    output_infos = sess.get_outputs()
+    log_info(f"Model outputs: {[(o.name, o.shape) for o in output_infos]}")
+    output_names = [o.name for o in output_infos]
+    output_values = sess.run(output_names, {input_name: img_batch})
+    output_map = {name: val[0] for name, val in zip(output_names, output_values)}
+
+    # Prefer the 'prediction' output (tag probabilities); fall back to first output
+    if "prediction" in output_map:
+        probs = output_map["prediction"]
+        log_info(f"Using 'prediction' output: {len(probs)} values")
+    else:
+        probs = output_values[0][0]
+        log_info(f"No 'prediction' output found, using first output: {len(probs)} values")
+    log_info(f"Inference complete: {len(probs)} probabilities, max={float(probs.max()):.4f}, mean={float(probs.mean()):.4f}")
 
     general_tags, character_tags, rating_count = load_tags(model_path)
+    log_info(f"Tags loaded: {len(general_tags)} general, {len(character_tags)} character, {rating_count} rating prefix")
 
     tags = []
     # probs[0:rating_count] are rating predictions (ignored for output)
@@ -132,6 +193,7 @@ def run_inference(image_path: str, repo_id: str, model_dir: str, threshold: floa
             if char_idx < len(character_tags) and p >= threshold:
                 tags.append(remove_underscore(character_tags[char_idx]))
 
+    log_info(f"Found {len(tags)} tags above threshold {threshold}")
     return ", ".join(tags)
 
 
@@ -160,9 +222,11 @@ def main():
 
     try:
         tags = run_inference(args.image_path, args.repo_id, args.model_dir, args.threshold)
-        print(json.dumps({"success": True, "tags": tags}))
+        print(json.dumps({"success": True, "tags": tags}), flush=True)
     except Exception as e:
-        print(json.dumps({"success": False, "error": str(e)}))
+        import traceback
+        print(json.dumps({"error": traceback.format_exc()}), flush=True)
+        print(json.dumps({"success": False, "error": str(e)}), flush=True)
         sys.exit(1)
 
 
