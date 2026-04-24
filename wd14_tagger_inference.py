@@ -16,8 +16,6 @@ from PIL import Image
 from huggingface_hub import hf_hub_download
 
 IMAGE_SIZE = 448
-# All SmilingWolf default-format models lead with 4 rating predictions
-RATING_COUNT = 4
 
 
 def preprocess_image(image_path: str) -> np.ndarray:
@@ -71,15 +69,17 @@ def ensure_model(repo_id: str, model_dir: str) -> str:
 
 
 def load_tags(model_path: str):
-    """Read general and character tag lists from selected_tags.csv (skip header row)."""
+    """Read general and character tag lists from selected_tags.csv (skip header row).
+    Also returns the number of leading rating predictions (category 9) in the model output."""
     csv_path = os.path.join(model_path, "selected_tags.csv")
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         rows = list(reader)[1:]  # skip header: tag_id,name,category,count
 
+    rating_count = sum(1 for row in rows if row[2] == "9")
     general_tags = [row[1] for row in rows if row[2] == "0"]
     character_tags = [row[1] for row in rows if row[2] == "4"]
-    return general_tags, character_tags
+    return general_tags, character_tags, rating_count
 
 
 def remove_underscore(tag: str) -> str:
@@ -104,18 +104,26 @@ def run_inference(image_path: str, repo_id: str, model_dir: str, threshold: floa
         providers = ["CPUExecutionProvider"]
 
     sess = ort.InferenceSession(onnx_path, providers=providers)
-    input_name = sess.get_inputs()[0].name
+    input_info = sess.get_inputs()[0]
+    input_name = input_info.name
 
     img = preprocess_image(image_path)
-    img_batch = np.expand_dims(img, 0)
+    # Detect channel order from model input shape: NCHW has shape[1]==3, NHWC has shape[3]==3
+    input_shape = input_info.shape
+    if len(input_shape) == 4 and input_shape[1] == 3:
+        # NCHW: transpose HWC -> CHW before adding batch dim
+        img_batch = np.expand_dims(np.transpose(img, (2, 0, 1)), 0)
+    else:
+        # NHWC (default SmilingWolf format)
+        img_batch = np.expand_dims(img, 0)
     probs = sess.run(None, {input_name: img_batch})[0][0]
 
-    general_tags, character_tags = load_tags(model_path)
+    general_tags, character_tags, rating_count = load_tags(model_path)
 
     tags = []
-    # probs[0:RATING_COUNT] are rating predictions (ignored for output)
-    # probs[RATING_COUNT:] map to general_tags then character_tags in order
-    for i, p in enumerate(probs[RATING_COUNT:]):
+    # probs[0:rating_count] are rating predictions (ignored for output)
+    # probs[rating_count:] map to general_tags then character_tags in order
+    for i, p in enumerate(probs[rating_count:]):
         if i < len(general_tags):
             if p >= threshold:
                 tags.append(remove_underscore(general_tags[i]))

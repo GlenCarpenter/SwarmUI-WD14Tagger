@@ -7,7 +7,7 @@
 
 'use strict';
 
-/** Available SmilingWolf WD14 tagger models. */
+/** Available tagger models. */
 let wd14TaggerModels = [
     { id: 'SmilingWolf/wd-eva02-large-tagger-v3',    label: 'WD EVA02 Large v3 (default)' },
     { id: 'SmilingWolf/wd-vit-large-tagger-v3',      label: 'WD ViT Large v3' },
@@ -17,6 +17,7 @@ let wd14TaggerModels = [
     { id: 'SmilingWolf/wd-v1-4-swinv2-tagger-v2',   label: 'WD SwinV2 v2' },
     { id: 'SmilingWolf/wd-v1-4-vit-tagger-v2',      label: 'WD ViT v2' },
     { id: 'SmilingWolf/wd-v1-4-convnext-tagger-v2', label: 'WD ConvNext v2' },
+    { id: 'deepghs/pixai-tagger-v0.9-onnx',         label: 'PixAI Tagger v0.9' },
 ];
 
 /**
@@ -254,7 +255,7 @@ function addWD14TaggerButtons() {
         });
     }
 
-    document.addEventListener('click', function(e) {
+    document.addEventListener('mousedown', function(e) {
         if (settingsPanel.style.display === 'block' &&
             !settingsPanel.contains(e.target) &&
             !settingsBtn.contains(e.target)) {
