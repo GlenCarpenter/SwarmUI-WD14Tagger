@@ -7,7 +7,7 @@ using SwarmUI.Accounts;
 using SwarmUI.Utils;
 using SwarmUI.WebAPI;
 
-namespace SwarmUI.Extensions.WD14Tagger;
+namespace GlenCarpenter.Extensions.WD14TaggerExtension;
 
 /// <summary>Permission definitions for the WD14Tagger extension.</summary>
 public static class WD14TaggerPermissions

@@ -1,7 +1,7 @@
 using SwarmUI.Core;
 using SwarmUI.Utils;
 
-namespace SwarmUI.Extensions.WD14Tagger;
+namespace GlenCarpenter.Extensions.WD14TaggerExtension;
 
 /// <summary>WD14Tagger - image tagging using SmilingWolf WD14 ONNX models from HuggingFace.</summary>
 public class WD14TaggerExtension : Extension
