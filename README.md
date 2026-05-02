@@ -65,6 +65,8 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
 ## Usage
 
+<img width="1376" height="801" alt="image" src="https://github.com/user-attachments/assets/2257fa2c-bdbd-4003-b8e1-b0e0e577e320" />
+
 ### Generate Tags Button
 
 The **Generate Tags** button appears in the image viewer's media button bar (the same bar as Save, Send to Init Image, etc.).
