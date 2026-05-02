@@ -1,9 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using System.Globalization;
 using Newtonsoft.Json.Linq;
 using SwarmUI.Accounts;
 using SwarmUI.Utils;
@@ -30,157 +28,16 @@ public static class WD14TaggerPermissions
 [API.APIClass("API routes related to WD14Tagger extension")]
 public static class WD14TaggerAPI
 {
-    private const string DefaultModelId = "SmilingWolf/wd-eva02-large-tagger-v3";
-    private const float DefaultThreshold = 0.35f;
+    /// <summary>Default WD14 tagger model ID.</summary>
+    public const string DefaultModelId = "SmilingWolf/wd-eva02-large-tagger-v3";
 
-    private sealed class PromptTagSettings
-    {
-        public string ModelId { get; init; } = DefaultModelId;
-        public float Threshold { get; init; } = DefaultThreshold;
-        public string FilterTags { get; init; } = "";
-    }
-
-    private static readonly ConditionalWeakTable<Session, PromptTagSettings> _promptTagSettingsBySession = new();
-
-    private static string GetUserSettingsFilePath(User user)
-    {
-        string dir = Path.Combine(WD14TaggerExtension.ExtFolder, "config");
-        Directory.CreateDirectory(dir);
-        // Sanitize UserID to be safe as a filename
-        string safeId = Regex.Replace(user.UserID, @"[^A-Za-z0-9_\-]", "_");
-        return Path.Combine(dir, $"{safeId}.json");
-    }
-
-    private static PromptTagSettings LoadUserSettings(User user)
-    {
-        if (user is null) return null;
-        string path = GetUserSettingsFilePath(user);
-        if (!File.Exists(path)) return null;
-        try
-        {
-            JObject json = JObject.Parse(File.ReadAllText(path));
-            string modelId = json["modelId"]?.Value<string>();
-            float threshold = json["threshold"]?.Value<float>() ?? DefaultThreshold;
-            string filterTags = json["filterTags"]?.Value<string>() ?? "";
-            if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
-                return null;
-            return new PromptTagSettings { ModelId = modelId, Threshold = threshold, FilterTags = filterTags };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static void SaveUserSettings(User user, PromptTagSettings settings)
-    {
-        if (user is null || settings is null) return;
-        string path = GetUserSettingsFilePath(user);
-        JObject json = new()
-        {
-            ["modelId"] = settings.ModelId,
-            ["threshold"] = settings.Threshold,
-            ["filterTags"] = settings.FilterTags
-        };
-        File.WriteAllText(path, json.ToString());
-    }
+    /// <summary>Default confidence threshold for tag inclusion.</summary>
+    public const float DefaultThreshold = 0.35f;
 
     /// <summary>Registers all API calls for this extension.</summary>
     public static void Register()
     {
         API.RegisterAPICall(WD14TaggerGenerateTags, true, WD14TaggerPermissions.PermGenerateTags);
-        API.RegisterAPICall(WD14TaggerSetPromptTagSettings, true, WD14TaggerPermissions.PermGenerateTags);
-        API.RegisterAPICall(WD14TaggerSavePromptTagSettings, true, WD14TaggerPermissions.PermGenerateTags);
-    }
-
-    private static void CachePromptTagSettings(Session session, string modelId, float threshold, string filterTags)
-    {
-        if (session is null)
-        {
-            return;
-        }
-        PromptTagSettings settings = new()
-        {
-            ModelId = modelId,
-            Threshold = threshold,
-            FilterTags = filterTags ?? ""
-        };
-        _promptTagSettingsBySession.AddOrUpdate(session, settings);
-    }
-
-    /// <summary>
-    /// Returns the most recently synced prompt-tag settings for this session,
-    /// or defaults when no sync has occurred yet.
-    /// </summary>
-    public static (string ModelId, float Threshold, string FilterTags) GetPromptTagSettingsForSession(Session session)
-    {
-        if (session is null)
-        {
-            return (DefaultModelId, DefaultThreshold, "");
-        }
-        if (_promptTagSettingsBySession.TryGetValue(session, out PromptTagSettings cached))
-        {
-            return (cached.ModelId, cached.Threshold, cached.FilterTags);
-        }
-        // Cache miss — try loading persisted settings from disk
-        PromptTagSettings loaded = LoadUserSettings(session.User);
-        if (loaded is not null)
-        {
-            _promptTagSettingsBySession.Remove(session);
-            _promptTagSettingsBySession.Add(session, loaded);
-            return (loaded.ModelId, loaded.Threshold, loaded.FilterTags);
-        }
-        return (DefaultModelId, DefaultThreshold, "");
-    }
-
-    /// <summary>
-    /// Updates prompt-tag settings for the current session from frontend UI values.
-    /// This decouples <wd14tagger> prompt processing from hidden DOM param presence.
-    /// </summary>
-    public static Task<JObject> WD14TaggerSetPromptTagSettings(
-        Session session,
-        string modelId = DefaultModelId,
-        float threshold = DefaultThreshold,
-        string filterTags = "")
-    {
-        if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
-        {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model ID format." });
-        }
-        if (threshold < 0f || threshold > 1f)
-        {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." });
-        }
-        CachePromptTagSettings(session, modelId, threshold, SanitizeFilterTags(filterTags));
-        return Task.FromResult(new JObject { ["success"] = true });
-    }
-
-    /// <summary>
-    /// Updates prompt-tag settings for the current session and persists them to disk.
-    /// Call only when the user has finished editing (e.g. panel close) to avoid excessive writes.
-    /// </summary>
-    public static Task<JObject> WD14TaggerSavePromptTagSettings(
-        Session session,
-        string modelId = DefaultModelId,
-        float threshold = DefaultThreshold,
-        string filterTags = "")
-    {
-        if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
-        {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model ID format." });
-        }
-        if (threshold < 0f || threshold > 1f)
-        {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." });
-        }
-        string sanitizedFilterTags = SanitizeFilterTags(filterTags);
-        CachePromptTagSettings(session, modelId, threshold, sanitizedFilterTags);
-        if (session?.User is not null)
-        {
-            PromptTagSettings settings = new() { ModelId = modelId, Threshold = threshold, FilterTags = sanitizedFilterTags };
-            SaveUserSettings(session.User, settings);
-        }
-        return Task.FromResult(new JObject { ["success"] = true });
     }
 
     /// <summary>Allowed characters in a HuggingFace repo ID (namespace/repo-name).</summary>
@@ -301,7 +158,6 @@ public static class WD14TaggerAPI
             return new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." };
         }
         filterTags = SanitizeFilterTags(filterTags);
-        CachePromptTagSettings(session, modelId, threshold, filterTags);
         // Build a set of lowercased filtered tags for fast lookup
         HashSet<string> filteredTagSet = new(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(filterTags))

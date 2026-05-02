@@ -2,15 +2,16 @@
 
 A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using [SmilingWolf's WD14 ONNX models](https://huggingface.co/SmilingWolf) from HuggingFace.
 
-After loading a reference image, click **Generate Tags** to analyze it and populate the prompt box with WD14 Danbooru-style tags.
+Generate tags from any image in the viewer with one click, or use the `<wd14tagger>` prompt tag to auto-tag at generation time.
 
 ---
 
 ## Features
 
-- One-click tag generation from a reference image
+- **Generate Tags** button in the image viewer (via the standard media button bar)
 - `<wd14tagger>` prompt tag — automatically tags the init image at generation time and injects the tags into the prompt
-- Multiple WD14 model options selectable from a dropdown
+- Settings managed as a **WD14 Tagger** parameter group — model, threshold, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
+- Multiple WD14 model options
 - Configurable confidence threshold (default: 0.35)
 - Tag filter list — exclude specific tags from the output
 - Models are downloaded automatically on first use and cached locally under `Models/wd14_tagger/`
@@ -64,14 +65,15 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
 ## Usage
 
-### Button
+### Generate Tags Button
 
-1. Load a reference image into the editor.
-2. Click the **Generate Tags** button (gear icon opens settings).
-3. The prompt box is populated with the detected tags.
-4. Optionally adjust the **threshold** or add tags to the **filter list** in the settings panel before tagging.
+The **Generate Tags** button appears in the image viewer's media button bar (the same bar as Save, Send to Init Image, etc.).
 
-If `<wd14tagger>` is already present anywhere in the prompt when the button is clicked, the tag is replaced in-place with the generated tags. Otherwise the **Insert Tags** mode (Replace / Prepend / Append) controls where tags are inserted.
+1. Generate or load an image so it appears in the viewer.
+2. Click **Generate Tags**.
+3. The prompt box is populated with the detected tags according to the current **Insert Mode** setting.
+
+If `<wd14tagger>` is already present anywhere in the prompt when the button is clicked, the tag is replaced in-place with the generated tags. Otherwise the **Insert Mode** (Replace / Prepend / Append) controls where tags are inserted.
 
 ### `<wd14tagger>` Prompt Tag
 
@@ -81,17 +83,20 @@ Place `<wd14tagger>` anywhere in your prompt text and SwarmUI will automatically
 masterpiece, <wd14tagger>, best quality
 ```
 
-The model, threshold, and filter list used are taken from the current settings panel values. The `<wd14tagger>` prompt tag requires an init image or prompt image to be set — if none is available a warning is shown and the tag is removed silently.
+The model, threshold, and filter list used are taken from the **WD14 Tagger** parameter group. The `<wd14tagger>` prompt tag requires an init image or prompt image to be set — if none is available a warning is shown and the tag is removed silently.
 
 > **Tip:** Start typing `<wd14` in the prompt box to find the tag in the autocomplete dropdown.
 
-### Settings
+### WD14 Tagger Parameter Group
+
+All settings live in the **WD14 Tagger** group in the parameter sidebar. They are saved and restored by SwarmUI's normal parameter save/load system (presets, etc.).
 
 | Setting | Description |
 |---|---|
-| **Model** | WD14 ONNX model to use for inference |
-| **Threshold** | Minimum confidence score (0.0–1.0) for a tag to be included |
-| **Filter Tags** | Comma-separated tags to remove from the output (e.g. `solo, simple background`) |
+| **[WD14 Tagger] Model** | WD14 ONNX model to use for inference |
+| **[WD14 Tagger] Threshold** | Minimum confidence score (0.0–1.0) for a tag to be included |
+| **[WD14 Tagger] Filter Tags** | Comma-separated tags to remove from the output (e.g. `solo, simple background`) |
+| **[WD14 Tagger] Insert Mode** | How tags are inserted into the prompt: Replace, Prepend, or Append |
 
 ---
 
