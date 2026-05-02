@@ -13,7 +13,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 - Settings managed as a **WD14 Tagger** parameter group — model, threshold, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
 - Multiple WD14 model options
 - Configurable confidence threshold (default: 0.35)
-- Tag filter list — exclude specific tags from the output
+- Tag filter list — exclude specific tags from the output and persist through SwarmUI's built-in parameter memory
 - Models are downloaded automatically on first use and cached locally under `Models/wd14_tagger/`
 
 ## Supported Models
@@ -89,7 +89,7 @@ The model, threshold, and filter list used are taken from the **WD14 Tagger** pa
 
 ### WD14 Tagger Parameter Group
 
-All settings live in the **WD14 Tagger** group in the parameter sidebar. They are saved and restored by SwarmUI's normal parameter save/load system (presets, etc.).
+All settings live in the **WD14 Tagger** group in the parameter sidebar. They are saved and restored by SwarmUI's normal parameter save/load system, including the built-in parameter memory and presets.
 
 | Setting | Description |
 |---|---|

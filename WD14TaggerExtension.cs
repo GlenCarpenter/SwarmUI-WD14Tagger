@@ -126,7 +126,6 @@ public class WD14TaggerExtension : Extension
                 "deepghs/pixai-tagger-v0.9-onnx///PixAI Tagger v0.9"
             ],
             Group: WD14TaggerGroup,
-            HideFromMetadata: true,
             IntentionalUnused: true,
             OrderPriority: 1
         ));
@@ -139,7 +138,6 @@ public class WD14TaggerExtension : Extension
             Step: 0.05,
             Group: WD14TaggerGroup,
             ViewType: ParamViewType.SLIDER,
-            HideFromMetadata: true,
             IntentionalUnused: true,
             OrderPriority: 2
         ));
@@ -148,17 +146,15 @@ public class WD14TaggerExtension : Extension
             Description: "Comma-separated list of tags to exclude from the output.",
             Default: "",
             Group: WD14TaggerGroup,
-            HideFromMetadata: true,
             IntentionalUnused: true,
             OrderPriority: 3
         ));
         InsertModeParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Insert Mode",
-            Description: "How generated tags are inserted into the prompt: replace the entire prompt, prepend before it, or append after it.",
+            Description: "How generated tags are inserted into the prompt: replace the entire prompt, prepend before it, or append after it. Note that the presence of a '<wd14tagger>' prompt tag will always take precedence.",
             Default: "replace",
             GetValues: _ => ["replace", "prepend", "append"],
             Group: WD14TaggerGroup,
-            HideFromMetadata: true,
             IntentionalUnused: true,
             OrderPriority: 4
         ));
