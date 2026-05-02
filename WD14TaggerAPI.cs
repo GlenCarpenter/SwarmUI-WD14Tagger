@@ -42,11 +42,55 @@ public static class WD14TaggerAPI
 
     private static readonly ConditionalWeakTable<Session, PromptTagSettings> _promptTagSettingsBySession = new();
 
+    private static string GetUserSettingsFilePath(User user)
+    {
+        string dir = Path.Combine(WD14TaggerExtension.ExtFolder, "config");
+        Directory.CreateDirectory(dir);
+        // Sanitize UserID to be safe as a filename
+        string safeId = Regex.Replace(user.UserID, @"[^A-Za-z0-9_\-]", "_");
+        return Path.Combine(dir, $"{safeId}.json");
+    }
+
+    private static PromptTagSettings LoadUserSettings(User user)
+    {
+        if (user is null) return null;
+        string path = GetUserSettingsFilePath(user);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            JObject json = JObject.Parse(File.ReadAllText(path));
+            string modelId = json["modelId"]?.Value<string>();
+            float threshold = json["threshold"]?.Value<float>() ?? DefaultThreshold;
+            string filterTags = json["filterTags"]?.Value<string>() ?? "";
+            if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
+                return null;
+            return new PromptTagSettings { ModelId = modelId, Threshold = threshold, FilterTags = filterTags };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void SaveUserSettings(User user, PromptTagSettings settings)
+    {
+        if (user is null || settings is null) return;
+        string path = GetUserSettingsFilePath(user);
+        JObject json = new()
+        {
+            ["modelId"] = settings.ModelId,
+            ["threshold"] = settings.Threshold,
+            ["filterTags"] = settings.FilterTags
+        };
+        File.WriteAllText(path, json.ToString());
+    }
+
     /// <summary>Registers all API calls for this extension.</summary>
     public static void Register()
     {
         API.RegisterAPICall(WD14TaggerGenerateTags, true, WD14TaggerPermissions.PermGenerateTags);
         API.RegisterAPICall(WD14TaggerSetPromptTagSettings, true, WD14TaggerPermissions.PermGenerateTags);
+        API.RegisterAPICall(WD14TaggerSavePromptTagSettings, true, WD14TaggerPermissions.PermGenerateTags);
     }
 
     private static void CachePromptTagSettings(Session session, string modelId, float threshold, string filterTags)
@@ -61,8 +105,7 @@ public static class WD14TaggerAPI
             Threshold = threshold,
             FilterTags = filterTags ?? ""
         };
-        _promptTagSettingsBySession.Remove(session);
-        _promptTagSettingsBySession.Add(session, settings);
+        _promptTagSettingsBySession.AddOrUpdate(session, settings);
     }
 
     /// <summary>
@@ -71,9 +114,21 @@ public static class WD14TaggerAPI
     /// </summary>
     public static (string ModelId, float Threshold, string FilterTags) GetPromptTagSettingsForSession(Session session)
     {
-        if (session is not null && _promptTagSettingsBySession.TryGetValue(session, out PromptTagSettings settings))
+        if (session is null)
         {
-            return (settings.ModelId, settings.Threshold, settings.FilterTags);
+            return (DefaultModelId, DefaultThreshold, "");
+        }
+        if (_promptTagSettingsBySession.TryGetValue(session, out PromptTagSettings cached))
+        {
+            return (cached.ModelId, cached.Threshold, cached.FilterTags);
+        }
+        // Cache miss — try loading persisted settings from disk
+        PromptTagSettings loaded = LoadUserSettings(session.User);
+        if (loaded is not null)
+        {
+            _promptTagSettingsBySession.Remove(session);
+            _promptTagSettingsBySession.Add(session, loaded);
+            return (loaded.ModelId, loaded.Threshold, loaded.FilterTags);
         }
         return (DefaultModelId, DefaultThreshold, "");
     }
@@ -96,12 +151,55 @@ public static class WD14TaggerAPI
         {
             return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." });
         }
-        CachePromptTagSettings(session, modelId, threshold, filterTags);
+        CachePromptTagSettings(session, modelId, threshold, SanitizeFilterTags(filterTags));
+        return Task.FromResult(new JObject { ["success"] = true });
+    }
+
+    /// <summary>
+    /// Updates prompt-tag settings for the current session and persists them to disk.
+    /// Call only when the user has finished editing (e.g. panel close) to avoid excessive writes.
+    /// </summary>
+    public static Task<JObject> WD14TaggerSavePromptTagSettings(
+        Session session,
+        string modelId = DefaultModelId,
+        float threshold = DefaultThreshold,
+        string filterTags = "")
+    {
+        if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model ID format." });
+        }
+        if (threshold < 0f || threshold > 1f)
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." });
+        }
+        string sanitizedFilterTags = SanitizeFilterTags(filterTags);
+        CachePromptTagSettings(session, modelId, threshold, sanitizedFilterTags);
+        if (session?.User is not null)
+        {
+            PromptTagSettings settings = new() { ModelId = modelId, Threshold = threshold, FilterTags = sanitizedFilterTags };
+            SaveUserSettings(session.User, settings);
+        }
         return Task.FromResult(new JObject { ["success"] = true });
     }
 
     /// <summary>Allowed characters in a HuggingFace repo ID (namespace/repo-name).</summary>
     private static readonly Regex SafeRepoIdPattern = new(@"^[A-Za-z0-9_\-/\.]+$", RegexOptions.Compiled);
+
+    /// <summary>Maximum allowed byte length for the filterTags string.</summary>
+    private const int MaxFilterTagsLength = 4096;
+
+    /// <summary>
+    /// Normalizes a raw filterTags string: truncates to max length, strips any character
+    /// that isn't a printable ASCII letter/digit/punctuation/space (no control chars).
+    /// </summary>
+    private static string SanitizeFilterTags(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        if (raw.Length > MaxFilterTagsLength) raw = raw[..MaxFilterTagsLength];
+        // Allow printable ASCII only (0x20–0x7E)
+        return new string(raw.Where(c => c >= 0x20 && c <= 0x7E).ToArray()).Trim();
+    }
 
     /// <summary>Guards one-time dependency installation per process lifetime.</summary>
     private static volatile bool _dependenciesEnsured = false;
@@ -202,6 +300,7 @@ public static class WD14TaggerAPI
         {
             return new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." };
         }
+        filterTags = SanitizeFilterTags(filterTags);
         CachePromptTagSettings(session, modelId, threshold, filterTags);
         // Build a set of lowercased filtered tags for fast lookup
         HashSet<string> filteredTagSet = new(StringComparer.OrdinalIgnoreCase);

@@ -21,17 +21,15 @@ let wd14TaggerModels = [
 ];
 
 let wd14LastPromptSettingsSyncKey = null;
-let wd14PendingPromptSettingsSyncKey = null;
 
 function syncWD14PromptSettingsToServer(settings) {
     if (!settings) {
         return;
     }
     let syncKey = `${settings.model}|${settings.thresholdDecimal}|${settings.filterTags}`;
-    if (syncKey === wd14LastPromptSettingsSyncKey || syncKey === wd14PendingPromptSettingsSyncKey) {
+    if (syncKey === wd14LastPromptSettingsSyncKey) {
         return;
     }
-    wd14PendingPromptSettingsSyncKey = syncKey;
     genericRequest(
         'WD14TaggerSetPromptTagSettings',
         {
@@ -41,12 +39,10 @@ function syncWD14PromptSettingsToServer(settings) {
         },
         (data) => {
             if (!data || !data.success) {
-                wd14PendingPromptSettingsSyncKey = null;
                 console.warn('[WD14Tagger] Failed to sync prompt settings to server', data);
             }
             else {
                 wd14LastPromptSettingsSyncKey = syncKey;
-                wd14PendingPromptSettingsSyncKey = null;
             }
         }
     );
@@ -382,8 +378,31 @@ function addWD14TaggerButtons() {
         settingsPanel.style.right = '';
     }
 
+    function saveWD14PromptSettingsToServer(settings) {
+        if (!settings) return;
+        // Always fires — no dedup — and persists to disk on the server.
+        let syncKey = `${settings.model}|${settings.thresholdDecimal}|${settings.filterTags}`;
+        genericRequest(
+            'WD14TaggerSavePromptTagSettings',
+            {
+                modelId: settings.model,
+                threshold: parseFloat(settings.thresholdDecimal),
+                filterTags: settings.filterTags
+            },
+            (data) => {
+                if (!data || !data.success) {
+                    console.warn('[WD14Tagger] Failed to save prompt settings to server', data);
+                }
+                else {
+                    wd14LastPromptSettingsSyncKey = syncKey;
+                    console.log('[WD14Tagger] Successfully saved prompt settings to backend', settings);
+                }
+            }
+        );
+    }
+
     function closeSettingsPanelAndFlushSync() {
-        syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
+        saveWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
         settingsPanel.style.display = 'none';
     }
 

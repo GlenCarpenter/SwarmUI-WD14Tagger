@@ -21,6 +21,9 @@ venv/
 *.pt
 *.pth
 
+# User config / persisted settings
+config/
+
 # OS
 .DS_Store
 Thumbs.db

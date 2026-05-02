@@ -1,4 +1,5 @@
 using Newtonsoft.Json.Linq;
+using SwarmUI.Accounts;
 using SwarmUI.Media;
 using SwarmUI.Core;
 using SwarmUI.Text2Image;
@@ -53,7 +54,8 @@ public class WD14TaggerExtension : Extension
             context.Input.ExtraMeta[PromptTagCacheKey] = "";
             return "";
         }
-        (string model, float threshold, string filterTags) = WD14TaggerAPI.GetPromptTagSettingsForSession(context.Input.SourceSession);
+        Session promptTagSession = context.Input.SourceSession;
+        (string model, float threshold, string filterTags) = WD14TaggerAPI.GetPromptTagSettingsForSession(promptTagSession);
         JObject result;
         try
         {
