@@ -3,7 +3,6 @@ using SwarmUI.Media;
 using SwarmUI.Core;
 using SwarmUI.Text2Image;
 using SwarmUI.Utils;
-using System.Globalization;
 
 namespace GlenCarpenter.Extensions.WD14TaggerExtension;
 
@@ -15,15 +14,6 @@ public class WD14TaggerExtension : Extension
 
     /// <summary>ExtraMeta key used to cache prompt-tag generated WD14 tags for this input.</summary>
     public const string PromptTagCacheKey = "wd14tagger_prompt_tags";
-
-    /// <summary>Hidden T2I param for the WD14 tagger model to use with the <wd14tagger> prompt tag.</summary>
-    public static T2IRegisteredParam<string> ModelParam;
-
-    /// <summary>Hidden T2I param for the WD14 tagger confidence threshold (0.0–1.0) for the <wd14tagger> prompt tag.</summary>
-    public static T2IRegisteredParam<double> ThresholdParam;
-
-    /// <summary>Hidden T2I param for comma-separated tags to filter out when using the <wd14tagger> prompt tag.</summary>
-    public static T2IRegisteredParam<string> FilterTagsParam;
 
     /// <summary>
     /// Attempts to get an image source from the generation input for prompt-tag tagging.
@@ -63,8 +53,7 @@ public class WD14TaggerExtension : Extension
             context.Input.ExtraMeta[PromptTagCacheKey] = "";
             return "";
         }
-        (bool hasSyncedSettings, string model, float threshold, string filterTags) = WD14TaggerAPI.GetPromptTagSettingsForSession(context.Input.SourceSession);
-        Logs.Info($"WD14Tagger PromptTag resolved settings: model='{model}', threshold={threshold.ToString("F4", CultureInfo.InvariantCulture)}, filterTags='{filterTags}', source={(hasSyncedSettings ? "synced-store" : "default-store")}");
+        (string model, float threshold, string filterTags) = WD14TaggerAPI.GetPromptTagSettingsForSession(context.Input.SourceSession);
         JObject result;
         try
         {
@@ -101,35 +90,6 @@ public class WD14TaggerExtension : Extension
         ScriptFiles.Add("Assets/wd14tagger.js");
         StyleSheetFiles.Add("Assets/wd14tagger.css");
 
-        ModelParam = T2IParamTypes.Register<string>(new(
-            Name: "WD14 Tagger Model",
-            Description: "Model to use when the <wd14tagger> prompt tag is processed.",
-            Default: "SmilingWolf/wd-eva02-large-tagger-v3",
-            VisibleNormally: false,
-            HideFromMetadata: true,
-            DoNotPreview: true
-        ));
-        ThresholdParam = T2IParamTypes.Register<double>(new(
-            Name: "WD14 Tagger Threshold",
-            Description: "Confidence threshold (0.0–1.0) for the <wd14tagger> prompt tag.",
-            Default: "0.35",
-            Min: 0,
-            Max: 1,
-            ViewType: ParamViewType.SLIDER,
-            VisibleNormally: false,
-            HideFromMetadata: true,
-            DoNotPreview: true
-        ));
-        FilterTagsParam = T2IParamTypes.Register<string>(new(
-            Name: "WD14 Tagger Filter Tags",
-            Description: "Comma-separated tags to exclude when the <wd14tagger> prompt tag is processed.",
-            Default: "",
-            VisibleNormally: false,
-            HideFromMetadata: true,
-            DoNotPreview: true
-        ));
-
-        Logs.Info("Register <wd14tagger> prompt token");
         // Register <wd14tagger> prompt token. It expands to WD14 tags generated
         // from the request's init image (or first prompt image) before generation.
         T2IPromptHandling.PromptTagBasicProcessors["wd14tagger"] = (data, context) =>
@@ -144,7 +104,6 @@ public class WD14TaggerExtension : Extension
 
     public override void OnInit()
     {
-        Logs.Info("WD14Tagger extension initialized.");
         WD14TaggerAPI.Register();
     }
 }

@@ -47,7 +47,6 @@ function syncWD14PromptSettingsToServer(settings) {
             else {
                 wd14LastPromptSettingsSyncKey = syncKey;
                 wd14PendingPromptSettingsSyncKey = null;
-                console.debug('[WD14Tagger] Synced prompt settings to server', settings);
             }
         }
     );
@@ -123,7 +122,6 @@ async function handleWD14GenerateTags() {
     }
 
     let button = document.getElementById('wd14tagger_generate_btn');
-    let modelSelect = document.getElementById('wd14tagger_model_select');
     let btnLabel = button ? button.querySelector('.wd14tagger-btn-label') : null;
 
     if (button) {
@@ -147,9 +145,6 @@ async function handleWD14GenerateTags() {
         let currentSettings = getWD14SettingsFromInputs();
         syncWD14PromptSettingsToServer(currentSettings);
         let selectedModel = currentSettings.model;
-        let filterTags = currentSettings.filterTags;
-        let threshold = parseFloat(currentSettings.thresholdDecimal);
-        console.debug('[WD14Tagger] handleWD14GenerateTags using input-field values', currentSettings);
 
         let result = await new Promise((resolve, reject) => {
             genericRequest(
@@ -260,7 +255,7 @@ function addWD14TaggerButtons() {
             </div>
             <div class="wd14tagger feature-setting">
                 <label for="wd14tagger_threshold_number">Confidence threshold percentage:</label>
-                <input id="wd14tagger_threshold_number" type="number" min="0" max="100" step="1" value="35" class="auto-slider-number" autocomplete="off"><span class="wd14tagger threshold-pct-label">%</span>
+                <input id="wd14tagger_threshold_number" type="number" min="0" max="100" step="5" value="35" class="auto-slider-number" autocomplete="off"><span class="wd14tagger threshold-pct-label">%</span>
                 <br>
                 <div class="auto-slider-range-wrapper" style="--range-value: 35%">
                     <input id="wd14tagger_threshold_input" type="range" min="0" max="100" step="1" value="35" class="auto-slider-range" oninput="updateRangeStyle(this)" onchange="updateRangeStyle(this)">
@@ -313,92 +308,14 @@ function addWD14TaggerButtons() {
         let numInput = settingsPanel.querySelector('#wd14tagger_threshold_number');
         if (slider) { slider.value = pct; updateRangeStyle(slider); }
         if (numInput) { numInput.value = pct; }
-        console.debug('[WD14Tagger] Restored threshold from localStorage', {
-            savedThreshold,
-            appliedPercent: pct,
-            appliedDecimal: (pct / 100).toFixed(4)
-        });
     }
 
-    /**
-     * Tries multiple selector variants because SwarmUI can normalize hidden param IDs differently.
-     */
-    function findHiddenParamInput(selectors) {
-        for (let selector of selectors) {
-            let el = document.querySelector(selector);
-            if (el) {
-                return el;
-            }
-        }
-        return null;
-    }
+    // Sync initial settings to server now that inputs are hydrated from localStorage.
+    syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
 
-    /**
-     * Syncs the current settings panel values to the hidden SwarmUI T2I param inputs,
-     * so they are included in the generation request when <wd14tagger> is used.
-     */
-    function syncToHiddenParams() {
-        let currentSettings = getWD14SettingsFromInputs(settingsPanel);
-        syncWD14PromptSettingsToServer(currentSettings);
-
-        let hiddenModel = findHiddenParamInput([
-            '#input_wd14taggermodel',
-            '#input_wd14_tagger_model',
-            'input[name="wd14taggermodel"]',
-            'input[name="wd14_tagger_model"]'
-        ]);
-        let hiddenThreshold = findHiddenParamInput([
-            '#input_wd14taggerthreshold',
-            '#input_wd14_tagger_threshold',
-            'input[name="wd14taggerthreshold"]',
-            'input[name="wd14_tagger_threshold"]'
-        ]);
-        let hiddenFilter = findHiddenParamInput([
-            '#input_wd14taggerfiltertags',
-            '#input_wd14_tagger_filter_tags',
-            'input[name="wd14taggerfiltertags"]',
-            'input[name="wd14_tagger_filter_tags"]'
-        ]);
-
-        if (hiddenModel) {
-            hiddenModel.value = currentSettings.model;
-            triggerChangeFor(hiddenModel);
-        }
-        if (hiddenThreshold) {
-            hiddenThreshold.value = currentSettings.thresholdDecimal;
-            triggerChangeFor(hiddenThreshold);
-        }
-        if (hiddenFilter) {
-            hiddenFilter.value = currentSettings.filterTags;
-            triggerChangeFor(hiddenFilter);
-        }
-
-        let foundAny = !!(hiddenModel || hiddenThreshold || hiddenFilter);
-        console.debug('[WD14Tagger] syncToHiddenParams', {
-            foundAny,
-            model: currentSettings.model,
-            thresholdPercent: currentSettings.thresholdPercent,
-            thresholdDecimal: currentSettings.thresholdDecimal,
-            filterTags: currentSettings.filterTags,
-            hiddenModelId: hiddenModel ? (hiddenModel.id || null) : null,
-            hiddenThresholdId: hiddenThreshold ? (hiddenThreshold.id || null) : null,
-            hiddenFilterId: hiddenFilter ? (hiddenFilter.id || null) : null,
-            hiddenModelName: hiddenModel ? (hiddenModel.name || null) : null,
-            hiddenThresholdName: hiddenThreshold ? (hiddenThreshold.name || null) : null,
-            hiddenFilterName: hiddenFilter ? (hiddenFilter.name || null) : null
-        });
-        if (!foundAny) {
-            console.warn('[WD14Tagger] No hidden WD14 inputs found in DOM during sync. PromptTag may use defaults.');
-        }
-        return foundAny;
-    }
-
-    // Sync initial values now that the function is defined
-    syncToHiddenParams();
-
-    // Hidden T2I inputs may be created after extension init; keep them in sync when DOM changes.
+    // Hidden T2I inputs may be created after extension init; resync when DOM changes.
     let syncObserver = new MutationObserver(() => {
-        syncToHiddenParams();
+        syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
     });
     syncObserver.observe(document.body, { childList: true, subtree: true });
 
@@ -412,26 +329,26 @@ function addWD14TaggerButtons() {
         if (checkedMode) {
             localStorage.setItem('wd14tagger_insert_mode', checkedMode.value);
         }
-        syncToHiddenParams();
+        syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
     });
     settingsPanel.addEventListener('input', function(e) {
         if (e.target.id === 'wd14tagger_filter_input') {
             localStorage.setItem('wd14tagger_filters', e.target.value);
-            syncToHiddenParams();
+            syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
         }
         if (e.target.id === 'wd14tagger_threshold_input') {
             let val = Math.round(parseFloat(e.target.value));
             localStorage.setItem('wd14tagger_threshold', val);
             let numInput = settingsPanel.querySelector('#wd14tagger_threshold_number');
             if (numInput) { numInput.value = val; }
-            syncToHiddenParams();
+            syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
         }
         if (e.target.id === 'wd14tagger_threshold_number') {
             let val = Math.min(100, Math.max(0, Math.round(parseFloat(e.target.value) || 0)));
             localStorage.setItem('wd14tagger_threshold', val);
             let slider = settingsPanel.querySelector('#wd14tagger_threshold_input');
             if (slider) { slider.value = val; updateRangeStyle(slider); }
-            syncToHiddenParams();
+            syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
         }
     });
 

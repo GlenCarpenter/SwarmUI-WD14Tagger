@@ -69,13 +69,13 @@ public static class WD14TaggerAPI
     /// Returns the most recently synced prompt-tag settings for this session,
     /// or defaults when no sync has occurred yet.
     /// </summary>
-    public static (bool HasSynced, string ModelId, float Threshold, string FilterTags) GetPromptTagSettingsForSession(Session session)
+    public static (string ModelId, float Threshold, string FilterTags) GetPromptTagSettingsForSession(Session session)
     {
         if (session is not null && _promptTagSettingsBySession.TryGetValue(session, out PromptTagSettings settings))
         {
-            return (true, settings.ModelId, settings.Threshold, settings.FilterTags);
+            return (settings.ModelId, settings.Threshold, settings.FilterTags);
         }
-        return (false, DefaultModelId, DefaultThreshold, "");
+        return (DefaultModelId, DefaultThreshold, "");
     }
 
     /// <summary>
@@ -97,7 +97,6 @@ public static class WD14TaggerAPI
             return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." });
         }
         CachePromptTagSettings(session, modelId, threshold, filterTags);
-        Logs.Info($"WD14Tagger PromptTag settings synced: model='{modelId}', threshold={threshold.ToString("F4", CultureInfo.InvariantCulture)}, filterTags='{filterTags}'");
         return Task.FromResult(new JObject { ["success"] = true });
     }
 
@@ -188,7 +187,6 @@ public static class WD14TaggerAPI
         float threshold = DefaultThreshold,
         string filterTags = "")
     {
-        Logs.Info($"WD14Tagger API request: model='{modelId}', threshold={threshold.ToString("F4", CultureInfo.InvariantCulture)}, filterTags='{filterTags}'");
         await EnsureDependenciesAsync();
 
         // Validate inputs to prevent injection
