@@ -91,6 +91,8 @@ The model, threshold, and filter list used are taken from the **WD14 Tagger** pa
 
 All settings live in the **WD14 Tagger** group in the parameter sidebar. They are saved and restored by SwarmUI's normal parameter save/load system, including the built-in parameter memory and presets.
 
+> **Recommended:** Use SwarmUI **Presets** to store your preferred WD14 settings (model, threshold, filter tags, insert mode) for reliable reuse across sessions.
+
 | Setting | Description |
 |---|---|
 | **[WD14 Tagger] Model** | WD14 ONNX model to use for inference |
