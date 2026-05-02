@@ -20,6 +20,97 @@ let wd14TaggerModels = [
     { id: 'deepghs/pixai-tagger-v0.9-onnx',         label: 'PixAI Tagger v0.9' },
 ];
 
+let wd14LastPromptSettingsSyncKey = null;
+let wd14PendingPromptSettingsSyncKey = null;
+
+function syncWD14PromptSettingsToServer(settings) {
+    if (!settings) {
+        return;
+    }
+    let syncKey = `${settings.model}|${settings.thresholdDecimal}|${settings.filterTags}`;
+    if (syncKey === wd14LastPromptSettingsSyncKey || syncKey === wd14PendingPromptSettingsSyncKey) {
+        return;
+    }
+    wd14PendingPromptSettingsSyncKey = syncKey;
+    genericRequest(
+        'WD14TaggerSetPromptTagSettings',
+        {
+            modelId: settings.model,
+            threshold: parseFloat(settings.thresholdDecimal),
+            filterTags: settings.filterTags
+        },
+        (data) => {
+            if (!data || !data.success) {
+                wd14PendingPromptSettingsSyncKey = null;
+                console.warn('[WD14Tagger] Failed to sync prompt settings to server', data);
+            }
+            else {
+                wd14LastPromptSettingsSyncKey = syncKey;
+                wd14PendingPromptSettingsSyncKey = null;
+                console.debug('[WD14Tagger] Synced prompt settings to server', settings);
+            }
+        }
+    );
+}
+
+/**
+ * Reads WD14 settings from localStorage and normalizes them as fallback defaults.
+ */
+function getPersistedWD14Settings() {
+    let defaultModel = 'SmilingWolf/wd-eva02-large-tagger-v3';
+    let model = localStorage.getItem('wd14tagger_model') || defaultModel;
+
+    let rawThreshold = localStorage.getItem('wd14tagger_threshold');
+    let thresholdPercent = 35;
+    if (rawThreshold !== null) {
+        let parsed = parseFloat(rawThreshold);
+        if (!Number.isNaN(parsed)) {
+            if (parsed <= 1) {
+                parsed = parsed * 100;
+            }
+            thresholdPercent = Math.min(100, Math.max(0, Math.round(parsed)));
+        }
+    }
+
+    return {
+        model,
+        thresholdPercent,
+        thresholdDecimal: (thresholdPercent / 100).toFixed(4),
+        filterTags: localStorage.getItem('wd14tagger_filters') || '',
+        insertMode: localStorage.getItem('wd14tagger_insert_mode') || 'replace'
+    };
+}
+
+/**
+ * Reads current WD14 settings from live input fields, with localStorage as fallback.
+ */
+function getWD14SettingsFromInputs(settingsPanel = document) {
+    let persisted = getPersistedWD14Settings();
+    let root = settingsPanel || document;
+
+    let modelSelect = root.querySelector('#wd14tagger_model_select');
+    let thresholdSlider = root.querySelector('#wd14tagger_threshold_input');
+    let thresholdNumber = root.querySelector('#wd14tagger_threshold_number');
+    let filterInput = root.querySelector('#wd14tagger_filter_input');
+    let insertModeEl = root.querySelector('input[name="wd14tagger_insert_mode"]:checked');
+
+    let thresholdPercent = persisted.thresholdPercent;
+    if (thresholdSlider && thresholdSlider.value !== '') {
+        thresholdPercent = Math.min(100, Math.max(0, Math.round(parseFloat(thresholdSlider.value) || 0)));
+    }
+    else if (thresholdNumber && thresholdNumber.value !== '') {
+        thresholdPercent = Math.min(100, Math.max(0, Math.round(parseFloat(thresholdNumber.value) || 0)));
+    }
+
+    return {
+        model: modelSelect ? modelSelect.value : persisted.model,
+        thresholdPercent,
+        thresholdDecimal: (thresholdPercent / 100).toFixed(4),
+        filterTags: filterInput ? filterInput.value : persisted.filterTags,
+        insertMode: insertModeEl ? insertModeEl.value : persisted.insertMode
+    };
+}
+
 /**
  * Handles the "Generate Tags" button click.
  * Reads the current image, sends it to the server, and inserts tags into the prompt.
@@ -53,11 +144,12 @@ async function handleWD14GenerateTags() {
             reader.readAsDataURL(blob);
         });
 
-        let selectedModel = modelSelect ? modelSelect.value : 'SmilingWolf/wd-eva02-large-tagger-v3';
-        let filterInput = document.getElementById('wd14tagger_filter_input');
-        let filterTags = filterInput ? filterInput.value : '';
-        let thresholdInput = document.getElementById('wd14tagger_threshold_input');
-        let threshold = thresholdInput ? (parseFloat(thresholdInput.value) / 100) : 0.35;
+        let currentSettings = getWD14SettingsFromInputs();
+        syncWD14PromptSettingsToServer(currentSettings);
+        let selectedModel = currentSettings.model;
+        let filterTags = currentSettings.filterTags;
+        let threshold = parseFloat(currentSettings.thresholdDecimal);
+        console.debug('[WD14Tagger] handleWD14GenerateTags using input-field values', currentSettings);
 
         let result = await new Promise((resolve, reject) => {
             genericRequest(
@@ -82,8 +174,7 @@ async function handleWD14GenerateTags() {
                     promptBox.value = existing.replace('<wd14tagger>', result.tags);
                 }
                 else {
-                    let insertModeEl = document.querySelector('input[name="wd14tagger_insert_mode"]:checked');
-                    let insertMode = insertModeEl ? insertModeEl.value : 'replace';
+                    let insertMode = currentSettings.insertMode;
                     if (insertMode === 'prepend') {
                         promptBox.value = existing.trim() ? result.tags + ', ' + existing : result.tags;
                     }
@@ -222,6 +313,24 @@ function addWD14TaggerButtons() {
         let numInput = settingsPanel.querySelector('#wd14tagger_threshold_number');
         if (slider) { slider.value = pct; updateRangeStyle(slider); }
         if (numInput) { numInput.value = pct; }
+        console.debug('[WD14Tagger] Restored threshold from localStorage', {
+            savedThreshold,
+            appliedPercent: pct,
+            appliedDecimal: (pct / 100).toFixed(4)
+        });
+    }
+
+    /**
+     * Tries multiple selector variants because SwarmUI can normalize hidden param IDs differently.
+     */
+    function findHiddenParamInput(selectors) {
+        for (let selector of selectors) {
+            let el = document.querySelector(selector);
+            if (el) {
+                return el;
+            }
+        }
+        return null;
     }
 
     /**
@@ -229,19 +338,69 @@ function addWD14TaggerButtons() {
      * so they are included in the generation request when <wd14tagger> is used.
      */
     function syncToHiddenParams() {
-        let modelSel = settingsPanel.querySelector('#wd14tagger_model_select');
-        let thresholdSlider = settingsPanel.querySelector('#wd14tagger_threshold_input');
-        let filterIn = settingsPanel.querySelector('#wd14tagger_filter_input');
-        let hiddenModel = document.getElementById('input_wd14taggermodel');
-        let hiddenThreshold = document.getElementById('input_wd14taggerthreshold');
-        let hiddenFilter = document.getElementById('input_wd14taggerfiltertags');
-        if (hiddenModel && modelSel) { hiddenModel.value = modelSel.value; }
-        if (hiddenThreshold && thresholdSlider) { hiddenThreshold.value = (parseFloat(thresholdSlider.value) / 100).toFixed(4); }
-        if (hiddenFilter && filterIn) { hiddenFilter.value = filterIn.value; }
+        let currentSettings = getWD14SettingsFromInputs(settingsPanel);
+        syncWD14PromptSettingsToServer(currentSettings);
+
+        let hiddenModel = findHiddenParamInput([
+            '#input_wd14taggermodel',
+            '#input_wd14_tagger_model',
+            'input[name="wd14taggermodel"]',
+            'input[name="wd14_tagger_model"]'
+        ]);
+        let hiddenThreshold = findHiddenParamInput([
+            '#input_wd14taggerthreshold',
+            '#input_wd14_tagger_threshold',
+            'input[name="wd14taggerthreshold"]',
+            'input[name="wd14_tagger_threshold"]'
+        ]);
+        let hiddenFilter = findHiddenParamInput([
+            '#input_wd14taggerfiltertags',
+            '#input_wd14_tagger_filter_tags',
+            'input[name="wd14taggerfiltertags"]',
+            'input[name="wd14_tagger_filter_tags"]'
+        ]);
+
+        if (hiddenModel) {
+            hiddenModel.value = currentSettings.model;
+            triggerChangeFor(hiddenModel);
+        }
+        if (hiddenThreshold) {
+            hiddenThreshold.value = currentSettings.thresholdDecimal;
+            triggerChangeFor(hiddenThreshold);
+        }
+        if (hiddenFilter) {
+            hiddenFilter.value = currentSettings.filterTags;
+            triggerChangeFor(hiddenFilter);
+        }
+
+        let foundAny = !!(hiddenModel || hiddenThreshold || hiddenFilter);
+        console.debug('[WD14Tagger] syncToHiddenParams', {
+            foundAny,
+            model: currentSettings.model,
+            thresholdPercent: currentSettings.thresholdPercent,
+            thresholdDecimal: currentSettings.thresholdDecimal,
+            filterTags: currentSettings.filterTags,
+            hiddenModelId: hiddenModel ? (hiddenModel.id || null) : null,
+            hiddenThresholdId: hiddenThreshold ? (hiddenThreshold.id || null) : null,
+            hiddenFilterId: hiddenFilter ? (hiddenFilter.id || null) : null,
+            hiddenModelName: hiddenModel ? (hiddenModel.name || null) : null,
+            hiddenThresholdName: hiddenThreshold ? (hiddenThreshold.name || null) : null,
+            hiddenFilterName: hiddenFilter ? (hiddenFilter.name || null) : null
+        });
+        if (!foundAny) {
+            console.warn('[WD14Tagger] No hidden WD14 inputs found in DOM during sync. PromptTag may use defaults.');
+        }
+        return foundAny;
     }
 
     // Sync initial values now that the function is defined
     syncToHiddenParams();
+
+    // Hidden T2I inputs may be created after extension init; keep them in sync when DOM changes.
+    let syncObserver = new MutationObserver(() => {
+        syncToHiddenParams();
+    });
+    syncObserver.observe(document.body, { childList: true, subtree: true });
 
     // Persist changes to localStorage
     settingsPanel.addEventListener('change', function() {
@@ -306,10 +465,15 @@ function addWD14TaggerButtons() {
         settingsPanel.style.right = '';
     }
 
+    function closeSettingsPanelAndFlushSync() {
+        syncWD14PromptSettingsToServer(getWD14SettingsFromInputs(settingsPanel));
+        settingsPanel.style.display = 'none';
+    }
+
     settingsBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         if (settingsPanel.style.display === 'block') {
-            settingsPanel.style.display = 'none';
+            closeSettingsPanelAndFlushSync();
             return;
         }
         positionSettingsPanel();
@@ -319,7 +483,7 @@ function addWD14TaggerButtons() {
     let closeBtn = settingsPanel.querySelector('.wd14tagger.panel-close-btn');
     if (closeBtn) {
         closeBtn.addEventListener('click', function() {
-            settingsPanel.style.display = 'none';
+            closeSettingsPanelAndFlushSync();
         });
     }
 
@@ -327,8 +491,12 @@ function addWD14TaggerButtons() {
         if (settingsPanel.style.display === 'block' &&
             !settingsPanel.contains(e.target) &&
             !settingsBtn.contains(e.target)) {
-            settingsPanel.style.display = 'none';
+            closeSettingsPanelAndFlushSync();
         }
+    });
+
+    window.addEventListener('beforeunload', function() {
+        syncObserver.disconnect();
     });
 
     container.appendChild(generateBtn);

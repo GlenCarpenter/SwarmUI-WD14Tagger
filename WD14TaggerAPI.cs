@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Globalization;
 using Newtonsoft.Json.Linq;
 using SwarmUI.Accounts;
 using SwarmUI.Utils;
@@ -28,10 +30,75 @@ public static class WD14TaggerPermissions
 [API.APIClass("API routes related to WD14Tagger extension")]
 public static class WD14TaggerAPI
 {
+    private const string DefaultModelId = "SmilingWolf/wd-eva02-large-tagger-v3";
+    private const float DefaultThreshold = 0.35f;
+
+    private sealed class PromptTagSettings
+    {
+        public string ModelId { get; init; } = DefaultModelId;
+        public float Threshold { get; init; } = DefaultThreshold;
+        public string FilterTags { get; init; } = "";
+    }
+
+    private static readonly ConditionalWeakTable<Session, PromptTagSettings> _promptTagSettingsBySession = new();
+
     /// <summary>Registers all API calls for this extension.</summary>
     public static void Register()
     {
         API.RegisterAPICall(WD14TaggerGenerateTags, true, WD14TaggerPermissions.PermGenerateTags);
+        API.RegisterAPICall(WD14TaggerSetPromptTagSettings, true, WD14TaggerPermissions.PermGenerateTags);
+    }
+
+    private static void CachePromptTagSettings(Session session, string modelId, float threshold, string filterTags)
+    {
+        if (session is null)
+        {
+            return;
+        }
+        PromptTagSettings settings = new()
+        {
+            ModelId = modelId,
+            Threshold = threshold,
+            FilterTags = filterTags ?? ""
+        };
+        _promptTagSettingsBySession.Remove(session);
+        _promptTagSettingsBySession.Add(session, settings);
+    }
+
+    /// <summary>
+    /// Returns the most recently synced prompt-tag settings for this session,
+    /// or defaults when no sync has occurred yet.
+    /// </summary>
+    public static (bool HasSynced, string ModelId, float Threshold, string FilterTags) GetPromptTagSettingsForSession(Session session)
+    {
+        if (session is not null && _promptTagSettingsBySession.TryGetValue(session, out PromptTagSettings settings))
+        {
+            return (true, settings.ModelId, settings.Threshold, settings.FilterTags);
+        }
+        return (false, DefaultModelId, DefaultThreshold, "");
+    }
+
+    /// <summary>
+    /// Updates prompt-tag settings for the current session from frontend UI values.
+    /// This decouples <wd14tagger> prompt processing from hidden DOM param presence.
+    /// </summary>
+    public static Task<JObject> WD14TaggerSetPromptTagSettings(
+        Session session,
+        string modelId = DefaultModelId,
+        float threshold = DefaultThreshold,
+        string filterTags = "")
+    {
+        if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model ID format." });
+        }
+        if (threshold < 0f || threshold > 1f)
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." });
+        }
+        CachePromptTagSettings(session, modelId, threshold, filterTags);
+        Logs.Info($"WD14Tagger PromptTag settings synced: model='{modelId}', threshold={threshold.ToString("F4", CultureInfo.InvariantCulture)}, filterTags='{filterTags}'");
+        return Task.FromResult(new JObject { ["success"] = true });
     }
 
     /// <summary>Allowed characters in a HuggingFace repo ID (namespace/repo-name).</summary>
@@ -117,10 +184,11 @@ public static class WD14TaggerAPI
     public static async Task<JObject> WD14TaggerGenerateTags(
         Session session,
         string imageBase64,
-        string modelId = "SmilingWolf/wd-eva02-large-tagger-v3",
-        float threshold = 0.35f,
+        string modelId = DefaultModelId,
+        float threshold = DefaultThreshold,
         string filterTags = "")
     {
+        Logs.Info($"WD14Tagger API request: model='{modelId}', threshold={threshold.ToString("F4", CultureInfo.InvariantCulture)}, filterTags='{filterTags}'");
         await EnsureDependenciesAsync();
 
         // Validate inputs to prevent injection
@@ -136,6 +204,7 @@ public static class WD14TaggerAPI
         {
             return new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." };
         }
+        CachePromptTagSettings(session, modelId, threshold, filterTags);
         // Build a set of lowercased filtered tags for fast lookup
         HashSet<string> filteredTagSet = new(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(filterTags))

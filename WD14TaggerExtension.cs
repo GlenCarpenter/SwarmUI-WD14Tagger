@@ -3,6 +3,7 @@ using SwarmUI.Media;
 using SwarmUI.Core;
 using SwarmUI.Text2Image;
 using SwarmUI.Utils;
+using System.Globalization;
 
 namespace GlenCarpenter.Extensions.WD14TaggerExtension;
 
@@ -62,9 +63,8 @@ public class WD14TaggerExtension : Extension
             context.Input.ExtraMeta[PromptTagCacheKey] = "";
             return "";
         }
-        string model = context.Input.Get(ModelParam, "SmilingWolf/wd-eva02-large-tagger-v3");
-        float threshold = (float)context.Input.Get(ThresholdParam, 0.35);
-        string filterTags = context.Input.Get(FilterTagsParam, "");
+        (bool hasSyncedSettings, string model, float threshold, string filterTags) = WD14TaggerAPI.GetPromptTagSettingsForSession(context.Input.SourceSession);
+        Logs.Info($"WD14Tagger PromptTag resolved settings: model='{model}', threshold={threshold.ToString("F4", CultureInfo.InvariantCulture)}, filterTags='{filterTags}', source={(hasSyncedSettings ? "synced-store" : "default-store")}");
         JObject result;
         try
         {
