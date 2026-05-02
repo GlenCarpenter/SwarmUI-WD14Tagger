@@ -77,18 +77,22 @@ async function handleWD14GenerateTags() {
         let promptBox = document.getElementById('alt_prompt_textbox');
         if (promptBox) {
             if (result.tags) {
-                let insertModeEl = document.querySelector('input[name="wd14tagger_insert_mode"]:checked');
-                let insertMode = insertModeEl ? insertModeEl.value : 'replace';
-                if (insertMode === 'prepend') {
-                    let existing = promptBox.value;
-                    promptBox.value = existing.trim() ? result.tags + ', ' + existing : result.tags;
-                }
-                else if (insertMode === 'append') {
-                    let existing = promptBox.value;
-                    promptBox.value = existing.trim() ? existing + ', ' + result.tags : result.tags;
+                let existing = promptBox.value;
+                if (existing.includes('<wd14tagger>')) {
+                    promptBox.value = existing.replace('<wd14tagger>', result.tags);
                 }
                 else {
-                    promptBox.value = result.tags;
+                    let insertModeEl = document.querySelector('input[name="wd14tagger_insert_mode"]:checked');
+                    let insertMode = insertModeEl ? insertModeEl.value : 'replace';
+                    if (insertMode === 'prepend') {
+                        promptBox.value = existing.trim() ? result.tags + ', ' + existing : result.tags;
+                    }
+                    else if (insertMode === 'append') {
+                        promptBox.value = existing.trim() ? existing + ', ' + result.tags : result.tags;
+                    }
+                    else {
+                        promptBox.value = result.tags;
+                    }
                 }
                 triggerChangeFor(promptBox);
                 promptBox.focus();
@@ -220,6 +224,25 @@ function addWD14TaggerButtons() {
         if (numInput) { numInput.value = pct; }
     }
 
+    /**
+     * Syncs the current settings panel values to the hidden SwarmUI T2I param inputs,
+     * so they are included in the generation request when <wd14tagger> is used.
+     */
+    function syncToHiddenParams() {
+        let modelSel = settingsPanel.querySelector('#wd14tagger_model_select');
+        let thresholdSlider = settingsPanel.querySelector('#wd14tagger_threshold_input');
+        let filterIn = settingsPanel.querySelector('#wd14tagger_filter_input');
+        let hiddenModel = document.getElementById('input_wd14taggermodel');
+        let hiddenThreshold = document.getElementById('input_wd14taggerthreshold');
+        let hiddenFilter = document.getElementById('input_wd14taggerfiltertags');
+        if (hiddenModel && modelSel) { hiddenModel.value = modelSel.value; }
+        if (hiddenThreshold && thresholdSlider) { hiddenThreshold.value = (parseFloat(thresholdSlider.value) / 100).toFixed(4); }
+        if (hiddenFilter && filterIn) { hiddenFilter.value = filterIn.value; }
+    }
+
+    // Sync initial values now that the function is defined
+    syncToHiddenParams();
+
     // Persist changes to localStorage
     settingsPanel.addEventListener('change', function() {
         let modelSel = settingsPanel.querySelector('#wd14tagger_model_select');
@@ -230,22 +253,26 @@ function addWD14TaggerButtons() {
         if (checkedMode) {
             localStorage.setItem('wd14tagger_insert_mode', checkedMode.value);
         }
+        syncToHiddenParams();
     });
     settingsPanel.addEventListener('input', function(e) {
         if (e.target.id === 'wd14tagger_filter_input') {
             localStorage.setItem('wd14tagger_filters', e.target.value);
+            syncToHiddenParams();
         }
         if (e.target.id === 'wd14tagger_threshold_input') {
             let val = Math.round(parseFloat(e.target.value));
             localStorage.setItem('wd14tagger_threshold', val);
             let numInput = settingsPanel.querySelector('#wd14tagger_threshold_number');
             if (numInput) { numInput.value = val; }
+            syncToHiddenParams();
         }
         if (e.target.id === 'wd14tagger_threshold_number') {
             let val = Math.min(100, Math.max(0, Math.round(parseFloat(e.target.value) || 0)));
             localStorage.setItem('wd14tagger_threshold', val);
             let slider = settingsPanel.querySelector('#wd14tagger_threshold_input');
             if (slider) { slider.value = val; updateRangeStyle(slider); }
+            syncToHiddenParams();
         }
     });
 
@@ -314,3 +341,11 @@ function addWD14TaggerButtons() {
 document.addEventListener('DOMContentLoaded', function() {
     addWD14TaggerButtons();
 });
+
+setTimeout(() => {
+    if (typeof promptTabComplete !== 'undefined') {
+        promptTabComplete.registerPrefix('wd14tagger', 'Automatically generate WD14 tags from the init image and insert them into the prompt.', () => [
+            '\nAdd "<wd14tagger>" anywhere in your prompt to auto-tag your init image using WD14.'
+        ], true);
+    }
+}, 0);

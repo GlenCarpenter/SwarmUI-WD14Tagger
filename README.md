@@ -9,6 +9,7 @@ After loading a reference image, click **Generate Tags** to analyze it and popul
 ## Features
 
 - One-click tag generation from a reference image
+- `<wd14tagger>` prompt tag — automatically tags the init image at generation time and injects the tags into the prompt
 - Multiple WD14 model options selectable from a dropdown
 - Configurable confidence threshold (default: 0.35)
 - Tag filter list — exclude specific tags from the output
@@ -63,10 +64,26 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
 ## Usage
 
+### Button
+
 1. Load a reference image into the editor.
 2. Click the **Generate Tags** button (gear icon opens settings).
 3. The prompt box is populated with the detected tags.
 4. Optionally adjust the **threshold** or add tags to the **filter list** in the settings panel before tagging.
+
+If `<wd14tagger>` is already present anywhere in the prompt when the button is clicked, the tag is replaced in-place with the generated tags. Otherwise the **Insert Tags** mode (Replace / Prepend / Append) controls where tags are inserted.
+
+### `<wd14tagger>` Prompt Tag
+
+Place `<wd14tagger>` anywhere in your prompt text and SwarmUI will automatically tag your init image (or first prompt image) at generation time, replacing the tag with the detected WD14 tags before the generation starts. No button click needed.
+
+```
+masterpiece, <wd14tagger>, best quality
+```
+
+The model, threshold, and filter list used are taken from the current settings panel values. The `<wd14tagger>` prompt tag requires an init image or prompt image to be set — if none is available a warning is shown and the tag is removed silently.
+
+> **Tip:** Start typing `<wd14` in the prompt box to find the tag in the autocomplete dropdown.
 
 ### Settings
 
