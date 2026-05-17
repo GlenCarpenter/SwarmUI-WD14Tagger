@@ -22,8 +22,11 @@ public class WD14TaggerExtension : Extension
     /// <summary>WD14 tagger model to use for tag generation.</summary>
     public static T2IRegisteredParam<string> ModelParam;
 
-    /// <summary>Confidence threshold (0.0-1.0) for including a tag.</summary>
-    public static T2IRegisteredParam<double> ThresholdParam;
+    /// <summary>Confidence threshold (0.0-1.0) for including general tags.</summary>
+    public static T2IRegisteredParam<double> GeneralThresholdParam;
+
+    /// <summary>Confidence threshold (0.0-1.0) for including character tags.</summary>
+    public static T2IRegisteredParam<double> CharacterThresholdParam;
 
     /// <summary>Comma-separated list of tags to exclude from the output.</summary>
     public static T2IRegisteredParam<string> FilterTagsParam;
@@ -71,12 +74,16 @@ public class WD14TaggerExtension : Extension
         }
         Session promptTagSession = context.Input.SourceSession;
         string model = context.Input.Get(ModelParam, WD14TaggerAPI.DefaultModelId);
-        float threshold = (float)context.Input.Get(ThresholdParam, (double)WD14TaggerAPI.DefaultThreshold);
+        float generalThreshold = context.Input.TryGet(GeneralThresholdParam, out double generalThreshVal) ? (float)generalThreshVal : -1f;
+        float characterThreshold = context.Input.TryGet(CharacterThresholdParam, out double charThreshVal) ? (float)charThreshVal : -1f;
         string filterTags = context.Input.Get(FilterTagsParam, "");
         JObject result;
         try
         {
-            result = WD14TaggerAPI.WD14TaggerGenerateTags(context.Input.SourceSession, source.AsBase64, model, threshold, filterTags).GetAwaiter().GetResult();
+            result = WD14TaggerAPI.WD14TaggerGenerateTags(context.Input.SourceSession, source.AsBase64, model,
+                generalThreshold,
+                characterThreshold,
+                filterTags).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -131,17 +138,31 @@ public class WD14TaggerExtension : Extension
             IntentionalUnused: true,
             OrderPriority: 1
         ));
-        ThresholdParam = T2IParamTypes.Register<double>(new(
-            Name: "[WD14 Tagger] Threshold",
-            Description: "Confidence threshold (0.0–1.0) for including a tag. Tags below this score are excluded.",
+        GeneralThresholdParam = T2IParamTypes.Register<double>(new(
+            Name: "[WD14 Tagger] General Threshold",
+            Description: "Confidence threshold (0.0–1.0) for including general tags. Tags below this score are excluded. Uncheck to disable general tags entirely.",
             Default: "0.35",
             Min: 0,
             Max: 1,
             Step: 0.05,
             Group: WD14TaggerGroup,
             ViewType: ParamViewType.SLIDER,
+            Toggleable: true,
             IntentionalUnused: true,
             OrderPriority: 2
+        ));
+        CharacterThresholdParam = T2IParamTypes.Register<double>(new(
+            Name: "[WD14 Tagger] Character Threshold",
+            Description: "Confidence threshold (0.0–1.0) for including character tags. Tags below this score are excluded. Uncheck to disable character tags entirely.",
+            Default: "0.85",
+            Min: 0,
+            Max: 1,
+            Step: 0.05,
+            Group: WD14TaggerGroup,
+            ViewType: ParamViewType.SLIDER,
+            Toggleable: true,
+            IntentionalUnused: true,
+            OrderPriority: 3
         ));
         FilterTagsParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Filter Tags",
@@ -149,7 +170,7 @@ public class WD14TaggerExtension : Extension
             Default: "",
             Group: WD14TaggerGroup,
             IntentionalUnused: true,
-            OrderPriority: 3
+            OrderPriority: 6
         ));
         InsertModeParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Insert Mode",
@@ -158,7 +179,7 @@ public class WD14TaggerExtension : Extension
             GetValues: _ => ["replace", "prepend", "append"],
             Group: WD14TaggerGroup,
             IntentionalUnused: true,
-            OrderPriority: 4
+            OrderPriority: 7
         ));
 
         // Register <wd14tagger> prompt token. It expands to WD14 tags generated

@@ -53,19 +53,25 @@ async function handleWD14GenerateTags(src) {
     }
 
     let modelElem = document.getElementById('input_wdtaggermodel');
-    let thresholdElem = document.getElementById('input_wdtaggerthreshold');
+    let generalThresholdElem = document.getElementById('input_wdtaggergeneralthreshold');
+    let generalToggleElem = document.getElementById('input_wdtaggergeneralthreshold_toggle');
+    let characterThresholdElem = document.getElementById('input_wdtaggercharacterthreshold');
+    let characterToggleElem = document.getElementById('input_wdtaggercharacterthreshold_toggle');
     let filterTagsElem = document.getElementById('input_wdtaggerfiltertags');
     let insertModeElem = document.getElementById('input_wdtaggerinsertmode');
 
     let modelId = modelElem ? modelElem.value : 'SmilingWolf/wd-eva02-large-tagger-v3';
-    let threshold = parseFloat(thresholdElem ? thresholdElem.value : '0.35') || 0.35;
+    let generalEnabled = !generalToggleElem || generalToggleElem.checked;
+    let generalThreshold = generalEnabled ? (parseFloat(generalThresholdElem ? generalThresholdElem.value : '0.35') || 0.35) : -1;
+    let characterEnabled = !characterToggleElem || characterToggleElem.checked;
+    let characterThreshold = characterEnabled ? (parseFloat(characterThresholdElem ? characterThresholdElem.value : '0.85') || 0.85) : -1;
     let filterTags = filterTagsElem ? filterTagsElem.value : '';
     let insertMode = insertModeElem ? insertModeElem.value : 'replace';
 
     let result = await new Promise((resolve, reject) => {
         genericRequest(
             'WD14TaggerGenerateTags',
-            { imageBase64: base64Data, modelId: modelId, threshold: threshold, filterTags: filterTags },
+            { imageBase64: base64Data, modelId: modelId, generalThreshold: generalThreshold, characterThreshold: characterThreshold, filterTags: filterTags },
             (data) => {
                 if (data.success) {
                     resolve(data);
@@ -102,6 +108,19 @@ async function handleWD14GenerateTags(src) {
     promptBox.focus();
     promptBox.setSelectionRange(0, promptBox.value.length);
 }
+
+/** Defaults both threshold toggles to enabled on first load (no user cookie). */
+function wd14TaggerDefaultToggles() {
+    for (let id of ['input_wdtaggergeneralthreshold', 'input_wdtaggercharacterthreshold']) {
+        let toggler = document.getElementById(id + '_toggle');
+        if (toggler && !getCookie(`lastparam_${id}_toggle`)) {
+            toggler.checked = true;
+            doToggleEnable(id);
+        }
+    }
+}
+
+postParamBuildSteps.push(wd14TaggerDefaultToggles);
 
 // Wire up the media button and prompt tab completion once the page is ready.
 setTimeout(() => {

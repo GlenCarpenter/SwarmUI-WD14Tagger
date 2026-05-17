@@ -128,11 +128,11 @@ def log_error(msg: str):
     print(json.dumps({"error": msg}), flush=True)
 
 
-def run_inference(image_path: str, repo_id: str, model_dir: str, threshold: float) -> str:
+def run_inference(image_path: str, repo_id: str, model_dir: str, general_threshold: float, character_threshold: float) -> str:
     """Run WD14 tagger inference and return comma-separated tag string."""
     import onnxruntime as ort
 
-    log_info(f"Starting inference: model={repo_id}, threshold={threshold}")
+    log_info(f"Starting inference: model={repo_id}, general_threshold={general_threshold}, character_threshold={character_threshold}")
 
     model_path = ensure_model(repo_id, model_dir)
     onnx_path = os.path.join(model_path, "model.onnx")
@@ -192,14 +192,14 @@ def run_inference(image_path: str, repo_id: str, model_dir: str, threshold: floa
     # probs[rating_count:] map to general_tags then character_tags in order
     for i, p in enumerate(probs[rating_count:]):
         if i < len(general_tags):
-            if p >= threshold:
+            if general_threshold >= 0 and p >= general_threshold:
                 tags.append(remove_underscore(general_tags[i]))
         else:
             char_idx = i - len(general_tags)
-            if char_idx < len(character_tags) and p >= threshold:
+            if char_idx < len(character_tags) and character_threshold >= 0 and p >= character_threshold:
                 tags.append(remove_underscore(character_tags[char_idx]))
 
-    log_info(f"Found {len(tags)} tags above threshold {threshold}")
+    log_info(f"Found {len(tags)} tags above threshold")
     return ", ".join(tags)
 
 
@@ -252,11 +252,11 @@ def load_camie_metadata(model_path: str, tags_filename: str) -> tuple:
     return mapping["idx_to_tag"], mapping["tag_to_category"]
 
 
-def run_camie_inference(image_path: str, repo_id: str, model_dir: str, threshold: float) -> str:
+def run_camie_inference(image_path: str, repo_id: str, model_dir: str, general_threshold: float, character_threshold: float) -> str:
     """Run Camie-tagger ONNX inference and return a comma-separated tag string."""
     import onnxruntime as ort
 
-    log_info(f"Starting Camie inference: model={repo_id}, threshold={threshold}")
+    log_info(f"Starting Camie inference: model={repo_id}, general_threshold={general_threshold}, character_threshold={character_threshold}")
     model_path, onnx_file, tags_file = ensure_camie_model(repo_id, model_dir)
     onnx_path = os.path.join(model_path, onnx_file)
     log_info(f"Camie model path: {onnx_path}")
@@ -291,13 +291,19 @@ def run_camie_inference(image_path: str, repo_id: str, model_dir: str, threshold
         idx = int(idx_str)
         if idx >= len(probs):
             continue
-        if float(probs[idx]) < threshold:
+        prob = float(probs[idx])
+        category = tag_to_category.get(tag_name, "general")
+        if category == "rating":
             continue
-        if tag_to_category.get(tag_name, "general") == "rating":
-            continue
+        if category == "character":
+            if character_threshold < 0 or prob < character_threshold:
+                continue
+        else:
+            if general_threshold < 0 or prob < general_threshold:
+                continue
         tags.append(remove_underscore(tag_name))
 
-    log_info(f"Found {len(tags)} Camie tags above threshold {threshold}")
+    log_info(f"Found {len(tags)} Camie tags above threshold")
     return ", ".join(tags)
 
 
@@ -317,18 +323,24 @@ def main():
         help="Local directory to store downloaded models",
     )
     parser.add_argument(
-        "--threshold",
+        "--general_threshold",
         type=float,
         default=0.35,
-        help="Confidence threshold for including a tag (0.0-1.0)",
+        help="Confidence threshold for general tags (0.0-1.0), or -1.0 to disable.",
+    )
+    parser.add_argument(
+        "--character_threshold",
+        type=float,
+        default=0.85,
+        help="Confidence threshold for character tags (0.0-1.0), or -1.0 to disable.",
     )
     args = parser.parse_args()
 
     try:
         if args.repo_id in CAMIE_MODELS:
-            tags = run_camie_inference(args.image_path, args.repo_id, args.model_dir, args.threshold)
+            tags = run_camie_inference(args.image_path, args.repo_id, args.model_dir, args.general_threshold, args.character_threshold)
         else:
-            tags = run_inference(args.image_path, args.repo_id, args.model_dir, args.threshold)
+            tags = run_inference(args.image_path, args.repo_id, args.model_dir, args.general_threshold, args.character_threshold)
         print(json.dumps({"success": True, "tags": tags}), flush=True)
     except Exception as e:
         import traceback

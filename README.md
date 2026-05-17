@@ -1,6 +1,6 @@
 # SwarmUI WD14 Tagger Extension
 
-A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using [SmilingWolf's WD14 ONNX models](https://huggingface.co/SmilingWolf) from HuggingFace.
+A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using WD14-style ONNX models from HuggingFace, including models from [SmilingWolf](https://huggingface.co/SmilingWolf), [deepghs](https://huggingface.co/deepghs), and [Camais03](https://huggingface.co/Camais03).
 
 Generate tags from any image in the viewer with one click, or use the `<wd14tagger>` prompt tag to auto-tag at generation time.
 
@@ -10,9 +10,10 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 
 - **Generate Tags** button in the image viewer (via the standard media button bar)
 - `<wd14tagger>` prompt tag — automatically tags the init image at generation time and injects the tags into the prompt
-- Settings managed as a **WD14 Tagger** parameter group — model, threshold, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
+- Settings managed as a **WD14 Tagger** parameter group — model, general/character thresholds, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
 - Multiple WD14 model options
-- Configurable confidence threshold (default: 0.35)
+- Separate configurable confidence thresholds for **general** tags (default: 0.35) and **character** tags (default: 0.85)
+- Each threshold category can be independently toggled off to exclude that tag type entirely
 - Tag filter list — exclude specific tags from the output and persist through SwarmUI's built-in parameter memory
 - Models are downloaded automatically on first use and cached locally under `Models/wd14_tagger/`
 
@@ -28,6 +29,9 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 | WD SwinV2 v2 | `SmilingWolf/wd-v1-4-swinv2-tagger-v2` |
 | WD ViT v2 | `SmilingWolf/wd-v1-4-vit-tagger-v2` |
 | WD ConvNext v2 | `SmilingWolf/wd-v1-4-convnext-tagger-v2` |
+| PixAI Tagger v0.9 | `deepghs/pixai-tagger-v0.9-onnx` |
+| Camie Tagger v1 | `Camais03/camie-tagger` |
+| Camie Tagger v2 | `Camais03/camie-tagger-v2` |
 
 ---
 
@@ -85,7 +89,7 @@ Place `<wd14tagger>` anywhere in your prompt text and SwarmUI will automatically
 masterpiece, <wd14tagger>, best quality
 ```
 
-The model, threshold, and filter list used are taken from the **WD14 Tagger** parameter group. The `<wd14tagger>` prompt tag requires an init image or prompt image to be set — if none is available a warning is shown and the tag is removed silently.
+The model, thresholds, and filter list used are taken from the **WD14 Tagger** parameter group. The `<wd14tagger>` prompt tag requires an init image or prompt image to be set — if none is available a warning is shown and the tag is removed silently.
 
 > **Tip:** Start typing `<wd14` in the prompt box to find the tag in the autocomplete dropdown.
 
@@ -93,12 +97,13 @@ The model, threshold, and filter list used are taken from the **WD14 Tagger** pa
 
 All settings live in the **WD14 Tagger** group in the parameter sidebar. They are saved and restored by SwarmUI's normal parameter save/load system, including the built-in parameter memory and presets.
 
-> **Recommended:** Use SwarmUI **Presets** to store your preferred WD14 settings (model, threshold, filter tags, insert mode) for reliable reuse across sessions.
+> **Recommended:** Use SwarmUI **Presets** to store your preferred WD14 settings (model, thresholds, filter tags, insert mode) for reliable reuse across sessions.
 
 | Setting | Description |
 |---|---|
 | **[WD14 Tagger] Model** | WD14 ONNX model to use for inference |
-| **[WD14 Tagger] Threshold** | Minimum confidence score (0.0–1.0) for a tag to be included |
+| **[WD14 Tagger] General Threshold** | Minimum confidence score (0.0–1.0) for a general tag to be included (default: 0.35). Toggle off to suppress all general tags. |
+| **[WD14 Tagger] Character Threshold** | Minimum confidence score (0.0–1.0) for a character tag to be included (default: 0.85). Toggle off to suppress all character tags. |
 | **[WD14 Tagger] Filter Tags** | Comma-separated tags to remove from the output (e.g. `solo, simple background`) |
 | **[WD14 Tagger] Insert Mode** | How tags are inserted into the prompt: Replace, Prepend, or Append |
 

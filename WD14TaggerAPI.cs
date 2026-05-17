@@ -31,8 +31,11 @@ public static class WD14TaggerAPI
     /// <summary>Default WD14 tagger model ID.</summary>
     public const string DefaultModelId = "SmilingWolf/wd-eva02-large-tagger-v3";
 
-    /// <summary>Default confidence threshold for tag inclusion.</summary>
-    public const float DefaultThreshold = 0.35f;
+    /// <summary>Default confidence threshold for general tag inclusion.</summary>
+    public const float DefaultGeneralThreshold = 0.35f;
+
+    /// <summary>Default confidence threshold for character tag inclusion.</summary>
+    public const float DefaultCharacterThreshold = 0.85f;
 
     /// <summary>Registers all API calls for this extension.</summary>
     public static void Register()
@@ -133,13 +136,15 @@ public static class WD14TaggerAPI
     /// <param name="session">The calling user session.</param>
     /// <param name="imageBase64">Base64-encoded image data (PNG/JPG/WEBP).</param>
     /// <param name="modelId">HuggingFace repo ID of the tagger model.</param>
-    /// <param name="threshold">Confidence threshold (0.0-1.0) for including a tag.</param>
+    /// <param name="generalThreshold">Confidence threshold (0.0-1.0) for general tags, or -1.0 to disable general tags.</param>
+    /// <param name="characterThreshold">Confidence threshold (0.0-1.0) for character tags, or -1.0 to disable character tags.</param>
     /// <param name="filterTags">Comma-separated list of tags to exclude from the output.</param>
     public static async Task<JObject> WD14TaggerGenerateTags(
         Session session,
         string imageBase64,
         string modelId = DefaultModelId,
-        float threshold = DefaultThreshold,
+        float generalThreshold = DefaultGeneralThreshold,
+        float characterThreshold = DefaultCharacterThreshold,
         string filterTags = "")
     {
         await EnsureDependenciesAsync();
@@ -153,9 +158,13 @@ public static class WD14TaggerAPI
         {
             return new JObject { ["success"] = false, ["error"] = "Invalid model ID format." };
         }
-        if (threshold < 0f || threshold > 1f)
+        if ((generalThreshold < 0f && generalThreshold != -1f) || generalThreshold > 1f)
         {
-            return new JObject { ["success"] = false, ["error"] = "Threshold must be between 0.0 and 1.0." };
+            return new JObject { ["success"] = false, ["error"] = "General threshold must be between 0.0 and 1.0, or -1.0 to disable." };
+        }
+        if ((characterThreshold < 0f && characterThreshold != -1f) || characterThreshold > 1f)
+        {
+            return new JObject { ["success"] = false, ["error"] = "Character threshold must be between 0.0 and 1.0, or -1.0 to disable." };
         }
         filterTags = SanitizeFilterTags(filterTags);
         // Build a set of lowercased filtered tags for fast lookup
@@ -188,7 +197,8 @@ public static class WD14TaggerAPI
                 "--image_path", tempImagePath,
                 "--repo_id", modelId,
                 "--model_dir", modelDir,
-                "--threshold", threshold.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                "--general_threshold", generalThreshold.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                "--character_threshold", characterThreshold.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
             ]);
             Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
             Task<string> stderrTask = process.StandardError.ReadToEndAsync();
