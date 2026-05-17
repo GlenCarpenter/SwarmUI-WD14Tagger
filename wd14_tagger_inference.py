@@ -17,6 +17,12 @@ from huggingface_hub import hf_hub_download
 
 IMAGE_SIZE = 448
 
+# Camie-tagger model registry: maps repo_id -> (onnx_filename, metadata_filename)
+CAMIE_MODELS = {
+    "Camais03/camie-tagger": ("model_initial.onnx", "model_initial_metadata.json"),
+    "Camais03/camie-tagger-v2": ("camie-tagger-v2.onnx", "camie-tagger-v2-metadata.json"),
+}
+
 
 def preprocess_image(image_path: str, bgr: bool = True) -> np.ndarray:
     """Load and preprocess an image for the WD14 tagger ONNX model.
@@ -197,6 +203,104 @@ def run_inference(image_path: str, repo_id: str, model_dir: str, threshold: floa
     return ", ".join(tags)
 
 
+def preprocess_image_camie(image_path: str, image_size: int = 512) -> np.ndarray:
+    """Preprocess image for Camie-tagger: aspect-ratio-preserving LANCZOS resize,
+    black-pad to square, RGB [0,1] normalized, returned as NCHW numpy batch."""
+    img = Image.open(image_path)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    width, height = img.size
+    aspect_ratio = width / height
+    if aspect_ratio > 1:
+        new_width = image_size
+        new_height = int(new_width / aspect_ratio)
+    else:
+        new_height = image_size
+        new_width = int(new_height * aspect_ratio)
+    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    padded = Image.new("RGB", (image_size, image_size), (0, 0, 0))
+    paste_x = (image_size - new_width) // 2
+    paste_y = (image_size - new_height) // 2
+    padded.paste(img, (paste_x, paste_y))
+    arr = np.array(padded).astype(np.float32) / 255.0  # [0, 1] HWC
+    arr = np.transpose(arr, (2, 0, 1))                 # CHW
+    return np.expand_dims(arr, 0)                      # NCHW
+
+
+def ensure_camie_model(repo_id: str, model_dir: str) -> tuple:
+    """Download Camie ONNX and metadata files if not already cached. Returns (local_dir, onnx_file, tags_file).
+    Delegates caching and resume logic entirely to hf_hub_download."""
+    onnx_file, tags_file = CAMIE_MODELS[repo_id]
+    safe_name = repo_id.replace("/", "_")
+    model_path = os.path.join(model_dir, safe_name)
+    os.makedirs(model_path, exist_ok=True)
+    print(json.dumps({"progress": f"Checking/downloading Camie model {repo_id}..."}), flush=True)
+    hf_hub_download(repo_id=repo_id, filename=onnx_file, local_dir=model_path)
+    hf_hub_download(repo_id=repo_id, filename=tags_file, local_dir=model_path)
+    return model_path, onnx_file, tags_file
+
+
+def load_camie_metadata(model_path: str, tags_filename: str) -> tuple:
+    """Load idx_to_tag and tag_to_category from Camie metadata JSON.
+    Handles v1 (flat) and v2 (nested under dataset_info.tag_mapping) formats."""
+    with open(os.path.join(model_path, tags_filename), "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+    if "dataset_info" in metadata:
+        mapping = metadata["dataset_info"]["tag_mapping"]
+    else:
+        mapping = metadata
+    return mapping["idx_to_tag"], mapping["tag_to_category"]
+
+
+def run_camie_inference(image_path: str, repo_id: str, model_dir: str, threshold: float) -> str:
+    """Run Camie-tagger ONNX inference and return a comma-separated tag string."""
+    import onnxruntime as ort
+
+    log_info(f"Starting Camie inference: model={repo_id}, threshold={threshold}")
+    model_path, onnx_file, tags_file = ensure_camie_model(repo_id, model_dir)
+    onnx_path = os.path.join(model_path, onnx_file)
+    log_info(f"Camie model path: {onnx_path}")
+
+    available = ort.get_available_providers()
+    if "CUDAExecutionProvider" in available:
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    elif "ROCMExecutionProvider" in available:
+        providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+    else:
+        providers = ["CPUExecutionProvider"]
+    log_info(f"Using providers: {providers}")
+
+    sess = ort.InferenceSession(onnx_path, providers=providers)
+    input_ = sess.get_inputs()[0]
+    img_batch = preprocess_image_camie(image_path)
+    if input_.type == 'tensor(float)':
+        img_batch = img_batch.astype(np.float32)
+    log_info(f"Camie input batch: shape={img_batch.shape}, dtype={img_batch.dtype}")
+
+    outputs = sess.run(None, {input_.name: img_batch})
+
+    # Prefer the refined output (index 1) when available; fall back to initial (index 0)
+    raw = outputs[1] if len(outputs) > 1 else outputs[0]
+    probs = 1.0 / (1.0 + np.exp(-raw[0]))  # sigmoid → shape [num_tags]
+
+    idx_to_tag, tag_to_category = load_camie_metadata(model_path, tags_file)
+    log_info(f"Camie metadata loaded: {len(idx_to_tag)} tag entries")
+
+    tags = []
+    for idx_str, tag_name in idx_to_tag.items():
+        idx = int(idx_str)
+        if idx >= len(probs):
+            continue
+        if float(probs[idx]) < threshold:
+            continue
+        if tag_to_category.get(tag_name, "general") == "rating":
+            continue
+        tags.append(remove_underscore(tag_name))
+
+    log_info(f"Found {len(tags)} Camie tags above threshold {threshold}")
+    return ", ".join(tags)
+
+
 def main():
     parser = argparse.ArgumentParser(description="WD14 Tagger inference (ONNX, SwarmUI extension)")
     parser.add_argument("--image_path", type=str, required=True, help="Path to the input image file")
@@ -221,7 +325,10 @@ def main():
     args = parser.parse_args()
 
     try:
-        tags = run_inference(args.image_path, args.repo_id, args.model_dir, args.threshold)
+        if args.repo_id in CAMIE_MODELS:
+            tags = run_camie_inference(args.image_path, args.repo_id, args.model_dir, args.threshold)
+        else:
+            tags = run_inference(args.image_path, args.repo_id, args.model_dir, args.threshold)
         print(json.dumps({"success": True, "tags": tags}), flush=True)
     except Exception as e:
         import traceback

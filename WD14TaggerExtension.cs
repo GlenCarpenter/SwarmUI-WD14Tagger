@@ -123,7 +123,9 @@ public class WD14TaggerExtension : Extension
                 "SmilingWolf/wd-v1-4-swinv2-tagger-v2///WD SwinV2 v2",
                 "SmilingWolf/wd-v1-4-vit-tagger-v2///WD ViT v2",
                 "SmilingWolf/wd-v1-4-convnext-tagger-v2///WD ConvNext v2",
-                "deepghs/pixai-tagger-v0.9-onnx///PixAI Tagger v0.9"
+                "deepghs/pixai-tagger-v0.9-onnx///PixAI Tagger v0.9",
+                "Camais03/camie-tagger///Camie Tagger v1",
+                "Camais03/camie-tagger-v2///Camie Tagger v2"
             ],
             Group: WD14TaggerGroup,
             IntentionalUnused: true,
