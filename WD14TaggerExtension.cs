@@ -28,7 +28,7 @@ public class WD14TaggerExtension : Extension
     /// <summary>Confidence threshold (0.0-1.0) for including character tags.</summary>
     public static T2IRegisteredParam<double> CharacterThresholdParam;
 
-    /// <summary>Comma-separated list of tags to exclude from the output.</summary>
+    /// <summary>Comma-separated tag rules to exclude or substitute tags in the output.</summary>
     public static T2IRegisteredParam<string> FilterTagsParam;
 
     /// <summary>How generated tags are inserted into the prompt (replace, prepend, or append).</summary>
@@ -166,7 +166,7 @@ public class WD14TaggerExtension : Extension
         ));
         FilterTagsParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Filter Tags",
-            Description: "Comma-separated list of tags to exclude from the output.",
+            Description: "Comma-separated exact tag rules. Use 'tag' to exclude it or 'source:target' to replace it in the output.",
             Default: "",
             Group: WD14TaggerGroup,
             IntentionalUnused: true,

@@ -145,7 +145,7 @@ All settings live in the **WD14 Tagger** group in the parameter sidebar. They ar
 | **[WD14 Tagger] Model** | WD14 ONNX model to use for inference |
 | **[WD14 Tagger] General Threshold** | Minimum confidence score (0.0–1.0) for a general tag to be included (default: 0.35). Toggle off to suppress all general tags. |
 | **[WD14 Tagger] Character Threshold** | Minimum confidence score (0.0–1.0) for a character tag to be included (default: 0.85). Toggle off to suppress all character tags. |
-| **[WD14 Tagger] Filter Tags** | Comma-separated tags to remove from the output (e.g. `solo, simple background`) |
+| **[WD14 Tagger] Filter Tags** | Comma-separated exact tag rules: use `tag` to remove it, or `source:target` to replace it (e.g. `solo, simple background, asian:person`) |
 | **[WD14 Tagger] Insert Mode** | How tags are inserted into the prompt: Replace, Prepend, or Append |
 
 ---
@@ -156,7 +156,7 @@ All settings live in the **WD14 Tagger** group in the parameter sidebar. They ar
 2. It is sent to the C# API endpoint (`WD14TaggerGenerateTags`).
 3. The API writes a temporary file and invokes `wd14_tagger_inference.py` using the configured Python executable.
 4. The Python script downloads the selected model from HuggingFace (if not already cached), runs ONNX inference, and returns a JSON result.
-5. The C# layer applies any tag filters and returns the final comma-separated tag string to the frontend.
+5. The C# layer applies any exact-match tag substitutions/exclusions and returns the final comma-separated tag string to the frontend.
 6. Tags are inserted into the prompt text box.
 
 ---

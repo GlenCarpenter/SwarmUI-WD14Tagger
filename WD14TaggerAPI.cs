@@ -49,6 +49,9 @@ public static class WD14TaggerAPI
     /// <summary>Maximum allowed byte length for the filterTags string.</summary>
     private const int MaxFilterTagsLength = 4096;
 
+    /// <summary>Parsed filter settings: exact-match exclusions and exact-match substitutions.</summary>
+    private record FilterTagRules(HashSet<string> ExcludedTags, Dictionary<string, string> ReplacementTags);
+
     /// <summary>
     /// Normalizes a raw filterTags string: truncates to max length, strips any character
     /// that isn't a printable ASCII letter/digit/punctuation/space (no control chars).
@@ -59,6 +62,58 @@ public static class WD14TaggerAPI
         if (raw.Length > MaxFilterTagsLength) raw = raw[..MaxFilterTagsLength];
         // Allow printable ASCII only (0x20–0x7E)
         return new string(raw.Where(c => c >= 0x20 && c <= 0x7E).ToArray()).Trim();
+    }
+
+    /// <summary>
+    /// Parses a comma-separated filter string into exclusion and substitution rules.
+    /// Entries of the form <c>source:target</c> replace an exact tag match; all other
+    /// entries exclude an exact tag match from the output.
+    /// </summary>
+    private static FilterTagRules ParseFilterTagRules(string filterTags)
+    {
+        HashSet<string> excludedTags = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> replacementTags = new(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(filterTags))
+        {
+            return new FilterTagRules(excludedTags, replacementTags);
+        }
+        foreach (string rawEntry in filterTags.Split(','))
+        {
+            string entry = rawEntry.Trim();
+            if (string.IsNullOrWhiteSpace(entry))
+            {
+                continue;
+            }
+            int separatorIndex = entry.IndexOf(':');
+            if (separatorIndex > 0 && separatorIndex < entry.Length - 1)
+            {
+                string sourceTag = entry[..separatorIndex].Trim();
+                string targetTag = entry[(separatorIndex + 1)..].Trim();
+                if (!string.IsNullOrWhiteSpace(sourceTag) && !string.IsNullOrWhiteSpace(targetTag))
+                {
+                    replacementTags[sourceTag] = targetTag;
+                    continue;
+                }
+            }
+            excludedTags.Add(entry);
+        }
+        return new FilterTagRules(excludedTags, replacementTags);
+    }
+
+    /// <summary>Applies exact-match substitutions first, then exact-match exclusions.</summary>
+    private static string ApplyFilterTagRules(string rawTags, FilterTagRules rules)
+    {
+        if (string.IsNullOrWhiteSpace(rawTags))
+        {
+            return "";
+        }
+        IEnumerable<string> updatedTags = rawTags
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => rules.ReplacementTags.TryGetValue(t, out string replacement) ? replacement : t)
+            .Where(t => !rules.ExcludedTags.Contains(t));
+        return string.Join(", ", updatedTags);
     }
 
     /// <summary>Guards one-time dependency installation per process lifetime.</summary>
@@ -138,7 +193,7 @@ public static class WD14TaggerAPI
     /// <param name="modelId">HuggingFace repo ID of the tagger model.</param>
     /// <param name="generalThreshold">Confidence threshold (0.0-1.0) for general tags, or -1.0 to disable general tags.</param>
     /// <param name="characterThreshold">Confidence threshold (0.0-1.0) for character tags, or -1.0 to disable character tags.</param>
-    /// <param name="filterTags">Comma-separated list of tags to exclude from the output.</param>
+    /// <param name="filterTags">Comma-separated exact tag filters. Use <c>tag</c> to exclude or <c>source:target</c> to substitute.</param>
     public static async Task<JObject> WD14TaggerGenerateTags(
         Session session,
         string imageBase64,
@@ -167,19 +222,7 @@ public static class WD14TaggerAPI
             return new JObject { ["success"] = false, ["error"] = "Character threshold must be between 0.0 and 1.0, or -1.0 to disable." };
         }
         filterTags = SanitizeFilterTags(filterTags);
-        // Build a set of lowercased filtered tags for fast lookup
-        HashSet<string> filteredTagSet = new(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(filterTags))
-        {
-            foreach (string ft in filterTags.Split(','))
-            {
-                string trimmed = ft.Trim();
-                if (!string.IsNullOrEmpty(trimmed))
-                {
-                    filteredTagSet.Add(trimmed);
-                }
-            }
-        }
+        FilterTagRules filterRules = ParseFilterTagRules(filterTags);
 
         string tempImagePath = null;
         try
@@ -240,15 +283,11 @@ public static class WD14TaggerAPI
             }
 
             JObject result = JObject.Parse(resultLine);
-            // Apply tag filtering if any filters were specified
-            if (filteredTagSet.Count > 0 && result["success"]?.Value<bool>() == true)
+            // Apply tag substitution/exclusion rules if any filters were specified.
+            if ((filterRules.ExcludedTags.Count > 0 || filterRules.ReplacementTags.Count > 0) && result["success"]?.Value<bool>() == true)
             {
                 string rawTags = result["tags"]?.Value<string>() ?? "";
-                IEnumerable<string> filteredTags = rawTags
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(t => t.Trim())
-                    .Where(t => !filteredTagSet.Contains(t));
-                result["tags"] = string.Join(", ", filteredTags);
+                result["tags"] = ApplyFilterTagRules(rawTags, filterRules);
             }
             return result;
         }
