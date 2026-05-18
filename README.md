@@ -33,6 +33,47 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 | Camie Tagger v1 | `Camais03/camie-tagger` |
 | Camie Tagger v2 | `Camais03/camie-tagger-v2` |
 
+### Model Comparison
+
+#### WD Series (SmilingWolf)
+
+Trained on Danbooru. The gold standard for anime/illustration tagging — well-tested, widely used, and the most reliable for general-purpose use. All v3 models cover ~10,800 tags; v2 models cover ~9,000.
+
+**Which v3 to pick:**
+
+| Model | Notes |
+|---|---|
+| **EVA02 Large** *(default)* | Best overall accuracy in the v3 family. Recommended for most use cases. |
+| **ViT Large** | Marginally lower accuracy than EVA02, otherwise comparable. |
+| **ViT / SwinV2 / ConvNext** | Slightly lower accuracy than the Large variants. |
+
+**v2 models** are less accurate than their v3 counterparts across the board. Only worth using if you need to match output from an existing v2-based workflow.
+
+**Excels at:** general visual tags (composition, clothing, expressions, colour, style), content ratings, common characters.  
+**Struggles with:** recently introduced characters or series, niche/rare tags, non-anime art styles.
+
+---
+
+#### PixAI Tagger v0.9
+
+Also trained on Danbooru, but from a snapshot through early 2025 — more recent than the WD v3 training data. Output format and threshold behaviour are compatible with WD v3.
+
+**Excels at:** newer characters and tags that post-date the WD v3 training cutoff.  
+**Struggles with:** the same failure modes as WD otherwise; still Danbooru-scoped.
+
+---
+
+#### Camie Tagger (v1 / v2)
+
+A community model with a different goal: breadth over precision. Covers **70,000+ tags** across general, character, copyright, artist, meta, and rating categories — far more than any WD model. The macro F1 is lower than WD, meaning it's less consistent on rare tags, but micro F1 (common tags) is competitive. v2 improves on v1's accuracy.
+
+**Excels at:** catching niche tags, copyright/series identification, and artist tags where WD returns sparse results.
+**Struggles with:** consistency on uncommon tags; higher false-positive rate at lower thresholds. Consider raising the general threshold slightly (0.4–0.5) compared to WD defaults.
+
+---
+
+**Not sure which to use?** Start with **WD EVA02 Large v3**. If you find it missing characters, series names, or artist tags, try **PixAI Tagger v0.9** as a complement or replacement.
+
 ---
 
 ## Requirements
