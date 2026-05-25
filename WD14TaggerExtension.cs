@@ -1,5 +1,7 @@
+using System.IO;
 using Newtonsoft.Json.Linq;
 using SwarmUI.Accounts;
+using SwarmUI.Builtin_ComfyUIBackend;
 using SwarmUI.Media;
 using SwarmUI.Core;
 using SwarmUI.Text2Image;
@@ -115,11 +117,12 @@ public class WD14TaggerExtension : Extension
         ExtFolder = FilePath;
         ScriptFiles.Add("Assets/wd14tagger.js");
         StyleSheetFiles.Add("Assets/wd14tagger.css");
+        ComfyUISelfStartBackend.CustomNodePaths.Add(Path.GetFullPath($"{FilePath}/ComfyNodes"));
 
         WD14TaggerGroup = new("WD14 Tagger", Toggles: false, Open: false, OrderPriority: 100, Description: "Settings for WD14 image tagging (Generate Tags button and <wd14tagger> prompt tag).");
         ModelParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Model",
-            Description: "WD14 tagger model to use for tag generation.",
+            Description: "Image tagger model to use for tag generation.",
             Default: "SmilingWolf/wd-eva02-large-tagger-v3",
             GetValues: _ => [
                 "SmilingWolf/wd-eva02-large-tagger-v3///WD EVA02 Large v3 (default)",
@@ -132,7 +135,8 @@ public class WD14TaggerExtension : Extension
                 "SmilingWolf/wd-v1-4-convnext-tagger-v2///WD ConvNext v2",
                 "deepghs/pixai-tagger-v0.9-onnx///PixAI Tagger v0.9",
                 "Camais03/camie-tagger///Camie Tagger v1",
-                "Camais03/camie-tagger-v2///Camie Tagger v2"
+                "Camais03/camie-tagger-v2///Camie Tagger v2",
+                "lodestones/taggerine///Taggerine (DINOv3 ViT-H/16+)"
             ],
             Group: WD14TaggerGroup,
             IntentionalUnused: true,

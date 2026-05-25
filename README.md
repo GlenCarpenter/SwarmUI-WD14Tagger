@@ -1,6 +1,6 @@
 # SwarmUI WD14 Tagger Extension
 
-A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using WD14-style ONNX models from HuggingFace, including models from [SmilingWolf](https://huggingface.co/SmilingWolf), [deepghs](https://huggingface.co/deepghs), and [Camais03](https://huggingface.co/Camais03).
+A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using HuggingFace-hosted booru taggers, including models from [SmilingWolf](https://huggingface.co/SmilingWolf), [deepghs](https://huggingface.co/deepghs), [Camais03](https://huggingface.co/Camais03), and [lodestones](https://huggingface.co/lodestones).
 
 Generate tags from any image in the viewer with one click, or use the `<wd14tagger>` prompt tag to auto-tag at generation time.
 
@@ -16,6 +16,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 - Each threshold category can be independently toggled off to exclude that tag type entirely
 - Tag filter list — exclude specific tags from the output and persist through SwarmUI's built-in parameter memory
 - Models are downloaded automatically on first use and cached locally under `Models/wd14_tagger/`
+- All tagging runs through the self-start ComfyUI backend queue via a custom Comfy node, so heavy tagger execution shares the backend slot with normal generations
 
 ## Supported Models
 
@@ -32,6 +33,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 | PixAI Tagger v0.9 | `deepghs/pixai-tagger-v0.9-onnx` |
 | Camie Tagger v1 | `Camais03/camie-tagger` |
 | Camie Tagger v2 | `Camais03/camie-tagger-v2` |
+| Taggerine (DINOv3 ViT-H/16+) | `lodestones/taggerine` |
 
 ### Model Comparison
 
@@ -72,13 +74,23 @@ A community model with a different goal: breadth over precision. Covers **70,000
 
 ---
 
-**Not sure which to use?** Start with **WD EVA02 Large v3**. If you find it missing characters, series names, or artist tags, try **PixAI Tagger v0.9** as a complement or replacement.
+#### Taggerine
+
+Taggerine is a large DINOv3 ViT-H/16+ tagger trained on combined Danbooru and e621 annotations. It covers **74,000+ tags** and is especially strong when you want broader booru-style coverage than standard WD models. In this extension it reuses the existing threshold UI by treating character-category tags with the character threshold and all other non-rating categories with the general threshold.
+
+**Excels at:** broad tag coverage, character detection, and non-WD vocab breadth.  
+**Tradeoffs:** much heavier first-run setup than the ONNX models. The checkpoint is about 5.3 GB and requires PyTorch-based inference, so first use is slower and disk usage is substantially higher.
+
+---
+
+**Not sure which to use?** Start with **WD EVA02 Large v3**. If you want broader vocab coverage or stronger non-WD-style booru tagging and you do not mind the heavier model download, try **Taggerine**.
 
 ---
 
 ## Requirements
 
 - [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) (tested on v0.9.x / v1.x)
+- A self-start ComfyUI backend, since the extension now routes all tagging through a custom Comfy node
 - Python 3.10+ with the following packages:
   - `onnxruntime` (or `onnxruntime-gpu` for GPU inference)
   - `Pillow`
@@ -92,6 +104,8 @@ pip install onnxruntime Pillow numpy huggingface_hub
 ```
 
 > For GPU acceleration replace `onnxruntime` with `onnxruntime-gpu`.
+>
+> **Note:** Taggerine uses the existing Comfy Python runtime for `torch`, `torchvision`, `requests`, and `safetensors` rather than installing its own copies. The model checkpoint is still roughly 5.3 GB on first use.
 
 ---
 
@@ -142,7 +156,7 @@ All settings live in the **WD14 Tagger** group in the parameter sidebar. They ar
 
 | Setting | Description |
 |---|---|
-| **[WD14 Tagger] Model** | WD14 ONNX model to use for inference |
+| **[WD14 Tagger] Model** | Tagger model to use for inference |
 | **[WD14 Tagger] General Threshold** | Minimum confidence score (0.0–1.0) for a general tag to be included (default: 0.35). Toggle off to suppress all general tags. |
 | **[WD14 Tagger] Character Threshold** | Minimum confidence score (0.0–1.0) for a character tag to be included (default: 0.85). Toggle off to suppress all character tags. |
 | **[WD14 Tagger] Filter Tags** | Comma-separated exact tag rules: use `tag` to remove it, or `source:target` to replace it (e.g. `solo, simple background, asian:person`) |
@@ -154,9 +168,9 @@ All settings live in the **WD14 Tagger** group in the parameter sidebar. They ar
 
 1. The current image is read from the SwarmUI viewer and base64-encoded in the browser.
 2. It is sent to the C# API endpoint (`WD14TaggerGenerateTags`).
-3. The API writes a temporary file and invokes `wd14_tagger_inference.py` using the configured Python executable.
-4. The Python script downloads the selected model from HuggingFace (if not already cached), runs ONNX inference, and returns a JSON result.
-5. The C# layer applies any exact-match tag substitutions/exclusions and returns the final comma-separated tag string to the frontend.
+3. The API submits a tiny workflow to a self-start ComfyUI backend using the extension's `WD14TaggerGenerate` custom node.
+4. That custom node installs dependencies in the Comfy Python environment if needed, invokes `wd14_tagger_inference.py`, and writes the resulting tags to a temporary text file.
+5. The C# layer reads the result, applies any exact-match tag substitutions/exclusions, and returns the final comma-separated tag string to the frontend.
 6. Tags are inserted into the prompt text box.
 
 ---

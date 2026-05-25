@@ -40,6 +40,7 @@ async function wd14TaggerGetImageBase64(src) {
  */
 async function handleWD14GenerateTags(src) {
     let base64Data;
+    let didStartGeneration = false;
     try {
         base64Data = await wd14TaggerGetImageBase64(src);
     }
@@ -68,45 +69,60 @@ async function handleWD14GenerateTags(src) {
     let filterTags = filterTagsElem ? filterTagsElem.value : '';
     let insertMode = insertModeElem ? insertModeElem.value : 'replace';
 
-    let result = await new Promise((resolve, reject) => {
-        genericRequest(
-            'WD14TaggerGenerateTags',
-            { imageBase64: base64Data, modelId: modelId, generalThreshold: generalThreshold, characterThreshold: characterThreshold, filterTags: filterTags },
-            (data) => {
-                if (data.success) {
-                    resolve(data);
+    try {
+        let request = new Promise((resolve, reject) => {
+            genericRequest(
+                'WD14TaggerGenerateTags',
+                { imageBase64: base64Data, modelId: modelId, generalThreshold: generalThreshold, characterThreshold: characterThreshold, filterTags: filterTags },
+                (data) => {
+                    if (data.success) {
+                        resolve(data);
+                    }
+                    else {
+                        reject(new Error(data.error || 'Tagging failed.'));
+                    }
                 }
-                else {
-                    reject(new Error(data.error || 'Tagging failed.'));
-                }
-            }
-        );
-    });
+            );
+        });
+        if (typeof updateGenCount === 'function') {
+            didStartGeneration = true;
+            updateGenCount();
+        }
+        let result = await request;
 
-    let promptBox = document.getElementById('alt_prompt_textbox');
-    if (!promptBox) {
-        return;
+        let promptBox = document.getElementById('alt_prompt_textbox');
+        if (!promptBox) {
+            return;
+        }
+        if (!result.tags) {
+            showError('WD14 Tagger: No tags found above the current threshold.');
+            return;
+        }
+        let existing = promptBox.value;
+        if (existing.includes('<wd14tagger>')) {
+            promptBox.value = existing.replace('<wd14tagger>', result.tags);
+        }
+        else if (insertMode === 'prepend') {
+            promptBox.value = existing.trim() ? result.tags + ', ' + existing : result.tags;
+        }
+        else if (insertMode === 'append') {
+            promptBox.value = existing.trim() ? existing + ', ' + result.tags : result.tags;
+        }
+        else {
+            promptBox.value = result.tags;
+        }
+        triggerChangeFor(promptBox);
+        promptBox.focus();
+        promptBox.setSelectionRange(0, promptBox.value.length);
     }
-    if (!result.tags) {
-        showError('WD14 Tagger: No tags found above the current threshold.');
-        return;
+    catch (err) {
+        showError('WD14 Tagger: ' + err.message);
     }
-    let existing = promptBox.value;
-    if (existing.includes('<wd14tagger>')) {
-        promptBox.value = existing.replace('<wd14tagger>', result.tags);
+    finally {
+        if (didStartGeneration && typeof updateGenCount === 'function') {
+            updateGenCount();
+        }
     }
-    else if (insertMode === 'prepend') {
-        promptBox.value = existing.trim() ? result.tags + ', ' + existing : result.tags;
-    }
-    else if (insertMode === 'append') {
-        promptBox.value = existing.trim() ? existing + ', ' + result.tags : result.tags;
-    }
-    else {
-        promptBox.value = result.tags;
-    }
-    triggerChangeFor(promptBox);
-    promptBox.focus();
-    promptBox.setSelectionRange(0, promptBox.value.length);
 }
 
 /** Defaults both threshold toggles to enabled on first load (no user cookie). */

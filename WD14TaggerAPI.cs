@@ -1,9 +1,8 @@
-using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using SwarmUI.Accounts;
+using SwarmUI.Builtin_ComfyUIBackend;
 using SwarmUI.Utils;
 using SwarmUI.WebAPI;
 
@@ -116,77 +115,6 @@ public static class WD14TaggerAPI
         return string.Join(", ", updatedTags);
     }
 
-    /// <summary>Guards one-time dependency installation per process lifetime.</summary>
-    private static volatile bool _dependenciesEnsured = false;
-    private static readonly SemaphoreSlim _depLock = new(1, 1);
-
-    /// <summary>
-    /// Runs <c>pip install -r requirements.txt</c> once per process lifetime using the resolved
-    /// Python executable, so all required packages are present before the first inference call.
-    /// </summary>
-    private static async Task EnsureDependenciesAsync()
-    {
-        if (_dependenciesEnsured) return;
-        await _depLock.WaitAsync();
-        try
-        {
-            if (_dependenciesEnsured) return;
-            string requirementsPath = Path.GetFullPath($"{WD14TaggerExtension.ExtFolder}requirements.txt");
-            if (!File.Exists(requirementsPath))
-            {
-                Logs.Warning("WD14Tagger: requirements.txt not found, skipping dependency check.");
-                _dependenciesEnsured = true;
-                return;
-            }
-            Logs.Info("WD14Tagger: Checking/installing Python dependencies...");
-            ProcessStartInfo psi = new()
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            // Mirror PythonLaunchHelper.LaunchGeneric's Python discovery so pip installs into the correct isolated environment
-            if (File.Exists("./dlbackend/comfy/python_embeded/python.exe"))
-            {
-                psi.FileName = Path.GetFullPath("./dlbackend/comfy/python_embeded/python.exe");
-                psi.WorkingDirectory = Path.GetFullPath("./dlbackend/comfy/");
-                psi.Environment["PATH"] = PythonLaunchHelper.ReworkPythonPaths(Path.GetFullPath("./dlbackend/comfy/python_embeded"));
-            }
-            else if (File.Exists("./dlbackend/ComfyUI/venv/bin/python"))
-            {
-                psi.FileName = Path.GetFullPath("./dlbackend/ComfyUI/venv/bin/python");
-                psi.Environment["PATH"] = PythonLaunchHelper.ReworkPythonPaths(Path.GetFullPath("./dlbackend/ComfyUI/venv/bin"));
-            }
-            else
-            {
-                psi.FileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "python" : "python3";
-            }
-            PythonLaunchHelper.CleanEnvironmentOfPythonMess(psi, "WD14Tagger: ");
-            psi.ArgumentList.Add("-m");
-            psi.ArgumentList.Add("pip");
-            psi.ArgumentList.Add("install");
-            psi.ArgumentList.Add("--quiet");
-            psi.ArgumentList.Add("-r");
-            psi.ArgumentList.Add(requirementsPath);
-            using Process process = Process.Start(psi);
-            await process.WaitForExitAsync();
-            if (process.ExitCode != 0)
-            {
-                string stderr = await process.StandardError.ReadToEndAsync();
-                Logs.Warning($"WD14Tagger: pip install exited with code {process.ExitCode}. {stderr.Trim()}");
-            }
-            else
-            {
-                Logs.Info("WD14Tagger: Python dependencies ready.");
-            }
-            _dependenciesEnsured = true;
-        }
-        finally
-        {
-            _depLock.Release();
-        }
-    }
-
     /// <summary>Generates WD14 tags for the provided base64-encoded image using the specified model.</summary>
     /// <param name="session">The calling user session.</param>
     /// <param name="imageBase64">Base64-encoded image data (PNG/JPG/WEBP).</param>
@@ -202,8 +130,6 @@ public static class WD14TaggerAPI
         float characterThreshold = DefaultCharacterThreshold,
         string filterTags = "")
     {
-        await EnsureDependenciesAsync();
-
         // Validate inputs to prevent injection
         if (string.IsNullOrWhiteSpace(imageBase64))
         {
@@ -224,72 +150,48 @@ public static class WD14TaggerAPI
         filterTags = SanitizeFilterTags(filterTags);
         FilterTagRules filterRules = ParseFilterTagRules(filterTags);
 
-        string tempImagePath = null;
+        string tempOutputPath = Path.Combine(Path.GetTempPath(), $"wd14tagger_{Guid.NewGuid():N}.txt");
         try
         {
-            byte[] imageBytes = Convert.FromBase64String(imageBase64);
-            // Use a temp file with .png extension so PIL can auto-detect the format
-            tempImagePath = Path.Combine(Path.GetTempPath(), $"wd14tagger_{Guid.NewGuid():N}.png");
-            await File.WriteAllBytesAsync(tempImagePath, imageBytes);
-
-            string scriptPath = Path.GetFullPath($"{WD14TaggerExtension.ExtFolder}wd14_tagger_inference.py");
-            string modelDir = Path.GetFullPath("Models/wd14_tagger");
-
-            using Process process = PythonLaunchHelper.LaunchGeneric(scriptPath, false,
-            [
-                "--image_path", tempImagePath,
-                "--repo_id", modelId,
-                "--model_dir", modelDir,
-                "--general_threshold", generalThreshold.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                "--character_threshold", characterThreshold.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
-            ]);
-            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync(CancellationToken.None);
-            string stdout = (await stdoutTask).Trim();
-            string stderr = (await stderrTask).Trim();
-
-            // The script writes intermediate JSON lines: {"info": ...}, {"error": ...}, {"progress": ...}, then {"success": ...}
-            string resultLine = null;
-            foreach (string line in stdout.Split('\n'))
+            JObject workflow = new()
             {
-                string trimmed = line.Trim();
-                if (!trimmed.StartsWith("{")) { continue; }
-                JObject parsed;
-                try { parsed = JObject.Parse(trimmed); }
-                catch { continue; }
-                if (parsed.ContainsKey("info"))
+                ["1"] = new JObject
                 {
-                    Logs.Info($"WD14Tagger: {parsed["info"].Value<string>()}");
-                }
-                else if (parsed.ContainsKey("error"))
+                    ["class_type"] = "SwarmLoadImageB64",
+                    ["inputs"] = new JObject
+                    {
+                        ["image_base64"] = imageBase64
+                    }
+                },
+                ["2"] = new JObject
                 {
-                    Logs.Error($"WD14Tagger: {parsed["error"].Value<string>()}");
+                    ["class_type"] = "WD14TaggerGenerate",
+                    ["inputs"] = new JObject
+                    {
+                        ["images"] = new JArray() { "1", 0 },
+                        ["model_id"] = modelId,
+                        ["general_threshold"] = generalThreshold,
+                        ["character_threshold"] = characterThreshold,
+                        ["output_path"] = tempOutputPath
+                    }
                 }
-                else if (parsed.ContainsKey("success"))
-                {
-                    resultLine = trimmed;
-                }
-            }
-            if (!string.IsNullOrWhiteSpace(stderr))
+            };
+            using Session.GenClaim claim = session.Claim(liveGens: 1);
+            await ComfyUIBackendExtension.RunArbitraryWorkflowOnFirstBackend(workflow.ToString(), _ => { }, allowRemote: false);
+            if (!File.Exists(tempOutputPath))
             {
-                Logs.Warning($"WD14Tagger stderr: {stderr}");
+                return new JObject { ["success"] = false, ["error"] = "Workflow completed but produced no tag output. Ensure a self-start ComfyUI backend is available and loaded the WD14Tagger custom node." };
             }
-
-            if (string.IsNullOrWhiteSpace(resultLine))
+            string rawTags = (await File.ReadAllTextAsync(tempOutputPath)).Trim();
+            if (filterRules.ExcludedTags.Count > 0 || filterRules.ReplacementTags.Count > 0)
             {
-                Logs.Warning($"WD14Tagger: Python script produced no result. stdout='{stdout}'");
-                return new JObject { ["success"] = false, ["error"] = "Tagger produced no output. Check server logs for details." };
+                rawTags = ApplyFilterTagRules(rawTags, filterRules);
             }
-
-            JObject result = JObject.Parse(resultLine);
-            // Apply tag substitution/exclusion rules if any filters were specified.
-            if ((filterRules.ExcludedTags.Count > 0 || filterRules.ReplacementTags.Count > 0) && result["success"]?.Value<bool>() == true)
+            return new JObject
             {
-                string rawTags = result["tags"]?.Value<string>() ?? "";
-                result["tags"] = ApplyFilterTagRules(rawTags, filterRules);
-            }
-            return result;
+                ["success"] = true,
+                ["tags"] = rawTags
+            };
         }
         catch (FormatException)
         {
@@ -298,13 +200,13 @@ public static class WD14TaggerAPI
         catch (Exception ex)
         {
             Logs.Error($"WD14Tagger error: {ex.Message}");
-            return new JObject { ["success"] = false, ["error"] = ex.Message };
+            return new JObject { ["success"] = false, ["error"] = $"ComfyUI tagger workflow failed: {ex.Message}" };
         }
         finally
         {
-            if (tempImagePath != null && File.Exists(tempImagePath))
+            if (File.Exists(tempOutputPath))
             {
-                try { File.Delete(tempImagePath); } catch { /* best-effort cleanup */ }
+                try { File.Delete(tempOutputPath); } catch { /* best-effort cleanup */ }
             }
         }
     }
