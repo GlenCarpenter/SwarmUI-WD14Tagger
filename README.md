@@ -60,6 +60,10 @@ Trained on Danbooru. The gold standard for anime/illustration tagging — well-t
 
 #### PixAI Tagger v0.9
 
+Trained by pixai labs https://pixai.art/
+
+This extension uses the ONNX export published by [DeepGHS](https://huggingface.co/deepghs/pixai-tagger-v0.9-onnx) for local inference.
+
 Also trained on Danbooru, but from a snapshot through early 2025 — more recent than the WD v3 training data. Output format and threshold behaviour are compatible with WD v3.
 
 **Excels at:** newer characters and tags that post-date the WD v3 training cutoff.  
