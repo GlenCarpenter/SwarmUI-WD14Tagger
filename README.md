@@ -10,6 +10,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 
 - **Generate Tags** button in the image viewer (via the standard media button bar)
 - `<wd14tagger>` prompt tag — automatically tags the init image at generation time and injects the tags into the prompt
+- Optional prompt-tag positional overrides: `<wd14tagger:model-id,general-threshold,character-threshold>`
 - Settings managed as a **WD14 Tagger** parameter group — model, general/character thresholds, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
 - Multiple WD14 model options
 - Separate configurable confidence thresholds for **general** tags (default: 0.35) and **character** tags (default: 0.85)
@@ -154,9 +155,27 @@ Place `<wd14tagger>` anywhere in your prompt text and SwarmUI will automatically
 masterpiece, <wd14tagger>, best quality
 ```
 
-The model, thresholds, and filter list used are taken from the **WD14 Tagger** parameter group. The `<wd14tagger>` prompt tag requires an init image or prompt image to be set — if none is available a warning is shown and the tag is removed silently.
+To override the normal **[WD14 Tagger] Model** setting for just one prompt tag, add a model ID after a colon:
 
-> **Tip:** Start typing `<wd14` in the prompt box to find the tag in the autocomplete dropdown.
+```
+masterpiece, <wd14tagger:fancyfeast/joytag>, best quality
+```
+
+You can also override the **General Threshold** and **Character Threshold** for that specific prompt tag by adding positional arguments after the model ID:
+
+```
+masterpiece, <wd14tagger:deepghs/pixai-tagger-v0.9-onnx,0.5,0.85>, best quality
+```
+
+Spaces around commas are ignored, so this is equivalent:
+
+```
+masterpiece, <wd14tagger:deepghs/pixai-tagger-v0.9-onnx, 0.5, 0.85>, best quality
+```
+
+When one of those positional values is omitted, the prompt tag falls back to the value from the **WD14 Tagger** parameter group. The filter list is always taken from the parameter group. By default the prompt tag also uses that group's selected model, unless you explicitly override it in the tag. The `<wd14tagger>` prompt tag requires an init image or prompt image to be set — if none is available a warning is shown and the tag is removed silently.
+
+> **Tip:** Start typing `<wd14` in the prompt box to find the tag in the autocomplete dropdown, then type `:` after `wd14tagger` to see the available model IDs and the per-tag syntax reminder.
 
 ### WD14 Tagger Parameter Group
 

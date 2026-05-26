@@ -68,6 +68,21 @@ async function handleWD14GenerateTags(src) {
     let characterThreshold = characterEnabled ? (parseFloat(characterThresholdElem ? characterThresholdElem.value : '0.85') || 0.85) : -1;
     let filterTags = filterTagsElem ? filterTagsElem.value : '';
     let insertMode = insertModeElem ? insertModeElem.value : 'replace';
+    let promptBox = document.getElementById('alt_prompt_textbox');
+    let existingPrompt = promptBox ? promptBox.value : '';
+    let promptTagMatch = existingPrompt.match(/<wd14tagger(?::([^>]+))?>/i);
+    if (promptTagMatch && promptTagMatch[1] && promptTagMatch[1].trim()) {
+        let promptTagSettings = wd14TaggerParsePromptTagArgs(promptTagMatch[1]);
+        if (promptTagSettings.modelId) {
+            modelId = promptTagSettings.modelId;
+        }
+        if (promptTagSettings.generalThreshold !== null) {
+            generalThreshold = promptTagSettings.generalThreshold;
+        }
+        if (promptTagSettings.characterThreshold !== null) {
+            characterThreshold = promptTagSettings.characterThreshold;
+        }
+    }
 
     try {
         let request = new Promise((resolve, reject) => {
@@ -90,7 +105,6 @@ async function handleWD14GenerateTags(src) {
         }
         let result = await request;
 
-        let promptBox = document.getElementById('alt_prompt_textbox');
         if (!promptBox) {
             return;
         }
@@ -99,8 +113,8 @@ async function handleWD14GenerateTags(src) {
             return;
         }
         let existing = promptBox.value;
-        if (existing.includes('<wd14tagger>')) {
-            promptBox.value = existing.replace('<wd14tagger>', result.tags);
+        if (promptTagMatch) {
+            promptBox.value = existing.replace(promptTagMatch[0], result.tags);
         }
         else if (insertMode === 'prepend') {
             promptBox.value = existing.trim() ? result.tags + ', ' + existing : result.tags;
@@ -125,6 +139,41 @@ async function handleWD14GenerateTags(src) {
     }
 }
 
+/** Parses optional prompt-tag positional arguments: model, general threshold, character threshold. */
+function wd14TaggerParsePromptTagArgs(spec) {
+    let parts = (spec || '').split(',').map(part => part.trim());
+    let parseThreshold = (value) => {
+        if (!value) {
+            return null;
+        }
+        let parsed = parseFloat(value);
+        if (isNaN(parsed)) {
+            return null;
+        }
+        return parsed;
+    };
+    return {
+        modelId: parts.length > 0 && parts[0] ? parts[0] : null,
+        generalThreshold: parts.length > 1 ? parseThreshold(parts[1]) : null,
+        characterThreshold: parts.length > 2 ? parseThreshold(parts[2]) : null
+    };
+}
+
+/** Returns the list of WD14 tagger model IDs exposed by the extension parameter dropdown. */
+function wd14TaggerGetAvailableModels() {
+    if (typeof rawGenParamTypesFromServer !== 'undefined' && rawGenParamTypesFromServer) {
+        let modelParam = rawGenParamTypesFromServer.find(p => p.id == 'wdtaggermodel');
+        if (modelParam && modelParam.values && modelParam.values.length > 0) {
+            return modelParam.values;
+        }
+    }
+    let modelElem = document.getElementById('input_wdtaggermodel');
+    if (modelElem && modelElem.options) {
+        return [...modelElem.options].map(o => o.value).filter(v => v);
+    }
+    return [];
+}
+
 /** Defaults both threshold toggles to enabled on first load (no user cookie). */
 function wd14TaggerDefaultToggles() {
     for (let id of ['input_wdtaggergeneralthreshold', 'input_wdtaggercharacterthreshold']) {
@@ -141,9 +190,19 @@ postParamBuildSteps.push(wd14TaggerDefaultToggles);
 // Wire up the media button and prompt tab completion once the page is ready.
 setTimeout(() => {
     if (typeof promptTabComplete !== 'undefined') {
-        promptTabComplete.registerPrefix('wd14tagger', 'Automatically generate WD14 tags from the init image and insert them into the prompt.', () => [
-            '\nAdd "<wd14tagger>" anywhere in your prompt to auto-tag your init image using WD14.'
-        ], true);
+        promptTabComplete.registerPrefix('wd14tagger', 'Automatically generate tags from the init image and insert them into the prompt. Type ":" after the tag name to pick a model override.', (prefix) => {
+            let hasThresholdArgs = prefix.includes(',');
+            let helpText = [
+                '\nAdd "<wd14tagger>" anywhere in your prompt to auto-tag your init image using the selected tagger model.',
+                '\nUse "<wd14tagger:model,general_threshold,character_threshold>" for per-tag overrides. Spaces around commas are ignored.',
+                '\nExample: "<wd14tagger:deepghs/pixai-tagger-v0.9-onnx, 0.5, 0.85>".'
+            ];
+            let models = wd14TaggerGetAvailableModels();
+            if (!hasThresholdArgs && models.length > 0) {
+                return helpText.concat(promptTabComplete.getOrderedMatches(models, prefix.toLowerCase()));
+            }
+            return helpText;
+        }, true);
     }
     if (typeof registerMediaButton !== 'function') {
         console.warn('WD14 Tagger: registerMediaButton is not available — SwarmUI version may be too old.');
