@@ -5,6 +5,7 @@ import json
 import sys
 
 from .camie import CAMIE_MODELS, run_camie_inference
+from .joytag import JOYTAG_REPO_ID, run_joytag_inference
 from .pixai import PIXAI_REPO_ID, run_pixai_inference
 from .taggerine import TAGGERINE_REPO_ID, run_taggerine_inference
 from .wd14 import run_wd14_inference
@@ -12,6 +13,8 @@ from .wd14 import run_wd14_inference
 
 def run_inference_for_repo(image_path: str, repo_id: str, model_dir: str, general_threshold: float, character_threshold: float) -> str:
     """Dispatch inference to the appropriate backend implementation."""
+    if repo_id == JOYTAG_REPO_ID:
+        return run_joytag_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
     if repo_id == TAGGERINE_REPO_ID:
         return run_taggerine_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
     if repo_id in CAMIE_MODELS:

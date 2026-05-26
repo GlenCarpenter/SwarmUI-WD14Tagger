@@ -1,6 +1,6 @@
 # SwarmUI WD14 Tagger Extension
 
-A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using HuggingFace-hosted booru taggers, including models from [SmilingWolf](https://huggingface.co/SmilingWolf), [deepghs](https://huggingface.co/deepghs), [Camais03](https://huggingface.co/Camais03), and [lodestones](https://huggingface.co/lodestones).
+A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using HuggingFace-hosted booru taggers, including models from [SmilingWolf](https://huggingface.co/SmilingWolf), [deepghs](https://huggingface.co/deepghs), [fancyfeast](https://huggingface.co/fancyfeast), [Camais03](https://huggingface.co/Camais03), and [lodestones](https://huggingface.co/lodestones).
 
 Generate tags from any image in the viewer with one click, or use the `<wd14tagger>` prompt tag to auto-tag at generation time.
 
@@ -31,6 +31,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 | WD ViT v2 | `SmilingWolf/wd-v1-4-vit-tagger-v2` |
 | WD ConvNext v2 | `SmilingWolf/wd-v1-4-convnext-tagger-v2` |
 | PixAI Tagger v0.9 | `deepghs/pixai-tagger-v0.9-onnx` |
+| JoyTag | `fancyfeast/joytag` |
 | Camie Tagger v1 | `Camais03/camie-tagger` |
 | Camie Tagger v2 | `Camais03/camie-tagger-v2` |
 | Taggerine (DINOv3 ViT-H/16+) | `lodestones/taggerine` |
@@ -62,6 +63,15 @@ Also trained on Danbooru, but from a snapshot through early 2025 — more recent
 
 **Excels at:** newer characters and tags that post-date the WD v3 training cutoff.  
 **Struggles with:** the same failure modes as WD otherwise; still Danbooru-scoped.
+
+---
+
+#### JoyTag
+
+JoyTag is a ViT-B/16 multi-label tagger trained on Danbooru 2021 plus additional hand-tagged images to improve non-anime and photographic coverage. It ships an ONNX export with an ordered `top_tags.txt` list, so it integrates well with the extension's existing ONNX execution path.
+
+**Excels at:** broader cross-domain tagging than pure Danbooru-only WD-family models, including stronger photographic coverage.  
+**Tradeoffs:** upstream does not publish category splits alongside the ONNX export, so this extension applies the **General Threshold** to all JoyTag tags. If General Threshold is toggled off, it falls back to Character Threshold as a single global threshold.
 
 ---
 
