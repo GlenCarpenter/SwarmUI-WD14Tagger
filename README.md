@@ -15,7 +15,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 - Multiple WD14 model options
 - Separate configurable confidence thresholds for **general** tags (default: 0.35) and **character** tags (default: 0.85)
 - Each threshold category can be independently toggled off to exclude that tag type entirely
-- Tag filter list — exclude specific tags from the output and persist through SwarmUI's built-in parameter memory
+- Tag filter list — exclude or replace exact tags, plus boundary-aware wildcard matching for start / end / contains phrase rules
 - Models are downloaded automatically on first use and cached locally under `Models/wd14_tagger/`
 - All tagging runs through the self-start ComfyUI backend queue via a custom Comfy node, so heavy tagger execution shares the backend slot with normal generations
 
@@ -137,7 +137,7 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
 ---
 
-## Usage
+## General usage
 
 <img width="1376" height="801" alt="image" src="https://github.com/user-attachments/assets/2257fa2c-bdbd-4003-b8e1-b0e0e577e320" />
 
@@ -181,6 +181,38 @@ When one of those positional values is omitted, the prompt tag falls back to the
 
 > **Tip:** Start typing `<wd14` in the prompt box to find the tag in the autocomplete dropdown, then type `:` after `wd14tagger` to see the available model IDs and the per-tag syntax reminder.
 
+### Filter tags usage (exclude or replace tags)
+
+Build your filter list as a single comma-separated string, where each entry is one rule. You can mix exclude and replace rules in the same list. SwarmUI reads entries left to right as separate rules, for example:
+
+`solo, simple background, *hair*:wig, red*:blue, 1girl:person`
+
+In that example, each comma-separated item is processed as its own rule. Use the exclude and replace formats in the tables below to decide what each rule should do.
+
+Wildcard matching is boundary-aware rather than generic globbing. Boundaries are any non-alphanumeric characters (for example spaces, `+`, and `-`).
+
+Within each category, exact rules are applied before wildcard rules. When both replace and exclude rules are present together, replace rules run before exclude rules.
+
+#### Exclude usage
+
+| Rule Pattern | Type | Result | Example | Matches | Does Not Match | Output |
+|---|---|---|---|---|---|---|
+| `<phrase>` | Exact exclude | Removes only tags that exactly equal `<phrase>` | `hair` | `hair` | `black hair`, `facial-hair` | `hair -> [removed]`<br>`black hair -> black hair [ignored]`<br>`facial-hair -> facial-hair [ignored]` |
+| `<phrase>*` | Prefix exclude | Removes tags that start with `<phrase>` on boundaries | `red*` | `red`, `red eyes`, `red+vehicle` | `orange red`, `redirect` | `red -> [removed]`<br>`red eyes -> [removed]`<br>`red+vehicle -> [removed]`<br>`orange red -> orange red [ignored]`<br>`redirect -> redirect [ignored]` |
+| `*<phrase>` | Suffix exclude | Removes tags that end with `<phrase>` on boundaries | `*hair` | `hair`, `black hair`, `facial-hair`, `6+vehicles` (with `*vehicles`) | `hair style`, `chair` | `hair -> [removed]`<br>`black hair -> [removed]`<br>`facial-hair -> [removed]`<br>`6+vehicles -> 6+vehicles [ignored for *hair]`<br>`hair style -> hair style [ignored]`<br>`chair -> chair [ignored]` |
+| `*<phrase>*` | Contains exclude | Removes tags containing `<phrase>` on boundaries | `*hop*` | `hop scotch`, `my hop`, `my-hop-tag` | `hope` | `hop scotch -> [removed]`<br>`my hop -> [removed]`<br>`my-hop-tag -> [removed]`<br>`hope -> hope [ignored]` |
+
+#### Replace usage
+
+| Rule Pattern | Type | Result | Example | Matches | Does Not Match | Output |
+|---|---|---|---|---|---|---|
+| `<phrase>:<replacement>` | Exact replace | Replaces the full tag when it exactly equals `<phrase>` | `hair:wig` | `hair` | `black hair`, `facial-hair` | `hair -> wig [changed]`<br>`black hair -> black hair [ignored]`<br>`facial-hair -> facial-hair [ignored]` |
+| `<phrase>*:<replacement>` | Prefix replace | Replaces only the matched prefix phrase | `red*:blue` | `red eyes` | `orange red`, `redirect` | `red eyes -> blue eyes [changed]`<br>`orange red -> orange red [ignored]`<br>`redirect -> redirect [ignored]` |
+| `*<phrase>:<replacement>` | Suffix replace | Replaces only the matched suffix phrase | `*hair:wig` | `black hair` | `hair style`, `chair` | `black hair -> black wig [changed]`<br>`hair style -> hair style [ignored]`<br>`chair -> chair [ignored]` |
+| `*<phrase>*:<replacement>` | Contains replace | Replaces only the matched phrase inside the tag | `*hair*:wig` | `black hair`, `hair style`, `big hair style` | `chair`, `hairstyle` | `black hair -> black wig [changed]`<br>`hair style -> wig style [changed]`<br>`big hair style -> big wig style [changed]`<br>`chair -> chair [ignored]`<br>`hairstyle -> hairstyle [ignored]` |
+
+---
+
 ### WD14 Tagger Parameter Group
 
 All settings live in the **WD14 Tagger** group in the parameter sidebar. They are saved and restored by SwarmUI's normal parameter save/load system, including the built-in parameter memory and presets.
@@ -192,10 +224,8 @@ All settings live in the **WD14 Tagger** group in the parameter sidebar. They ar
 | **[WD14 Tagger] Model** | Tagger model to use for inference |
 | **[WD14 Tagger] General Threshold** | Minimum confidence score (0.0–1.0) for a general tag to be included (default: 0.35). Toggle off to suppress all general tags. |
 | **[WD14 Tagger] Character Threshold** | Minimum confidence score (0.0–1.0) for a character tag to be included (default: 0.85). Toggle off to suppress all character tags. |
-| **[WD14 Tagger] Filter Tags** | Comma-separated exact tag rules: use `tag` to remove it, or `source:target` to replace it (e.g. `solo, simple background, asian:person`) |
+| **[WD14 Tagger] Filter Tags** | Comma-separated tag rules: use `tag` to remove it, `source:target` to replace an exact tag, or wildcard forms like `tag*:new`, `*tag:new`, and `*tag*:new` to substitute only the matching phrase on word boundaries. Non-alphanumeric separators like spaces, `+`, and `-` count as boundaries. Example: `solo, *background*, asian:person, red*:primary color, *people:crowd, *hair*:wig` |
 | **[WD14 Tagger] Insert Mode** | How tags are inserted into the prompt: Replace, Prepend, or Append |
-
----
 
 ## How It Works
 
@@ -203,7 +233,7 @@ All settings live in the **WD14 Tagger** group in the parameter sidebar. They ar
 2. It is sent to the C# API endpoint (`WD14TaggerGenerateTags`).
 3. The API submits a tiny workflow to a self-start ComfyUI backend using the extension's `WD14TaggerGenerate` custom node.
 4. That custom node installs dependencies in the Comfy Python environment if needed, invokes `wd14_tagger_inference.py`, and writes the resulting tags to a temporary text file.
-5. The C# layer reads the result, applies any exact-match tag substitutions/exclusions, and returns the final comma-separated tag string to the frontend.
+5. The C# layer reads the result, applies any exact or wildcard tag substitutions/exclusions, and returns the final comma-separated tag string to the frontend.
 6. Tags are inserted into the prompt text box.
 
 ---

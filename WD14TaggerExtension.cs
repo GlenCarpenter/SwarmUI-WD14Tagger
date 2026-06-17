@@ -268,7 +268,7 @@ public class WD14TaggerExtension : Extension
         ));
         FilterTagsParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Filter Tags",
-            Description: "Comma-separated exact tag rules. Use 'tag' to exclude it or 'source:target' to replace it in the output.",
+            Description: "Comma-separated tag rules. Use 'tag' to exclude, 'source:target' to replace an exact tag, or wildcard forms like 'tag*:new', '*tag:new', and '*tag*:new' to substitute only the matching phrase on word boundaries. Non-alphanumeric separators like spaces, '+', and '-' count as boundaries.",
             Default: "",
             Group: WD14TaggerGroup,
             IntentionalUnused: true,
