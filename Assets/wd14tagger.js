@@ -187,6 +187,76 @@ function wd14TaggerDefaultToggles() {
 
 postParamBuildSteps.push(wd14TaggerDefaultToggles);
 
+/**
+ * Applies the current Filter Tags exclude/replace rules to the current prompt text,
+ * replacing the prompt with the filtered result. Uses the prompt as input rather than an image.
+ */
+async function handleWD14ApplyFiltersToPrompt() {
+    let promptBox = document.getElementById('alt_prompt_textbox');
+    if (!promptBox) {
+        return;
+    }
+    let filterTagsElem = document.getElementById('input_wdtaggerfiltertags');
+    let filterTags = filterTagsElem ? filterTagsElem.value : '';
+    let currentPrompt = promptBox.value;
+    if (!currentPrompt.trim()) {
+        showError('WD14 Tagger: The prompt is empty, nothing to filter.');
+        return;
+    }
+    try {
+        let result = await new Promise((resolve, reject) => {
+            genericRequest(
+                'WD14TaggerApplyFilters',
+                { tags: currentPrompt, filterTags: filterTags },
+                (data) => {
+                    if (data.success) {
+                        resolve(data);
+                    }
+                    else {
+                        reject(new Error(data.error || 'Filtering failed.'));
+                    }
+                }
+            );
+        });
+        promptBox.value = result.tags;
+        triggerChangeFor(promptBox);
+        promptBox.focus();
+        promptBox.setSelectionRange(0, promptBox.value.length);
+    }
+    catch (err) {
+        showError('WD14 Tagger: ' + err.message);
+    }
+}
+
+/** Injects the "Apply to current prompt" button directly under the Filter Tags input. */
+function wd14TaggerInjectFilterButton() {
+    let filterTagsElem = document.getElementById('input_wdtaggerfiltertags');
+    if (!filterTagsElem || document.getElementById('wd14tagger_apply_filters_button')) {
+        return;
+    }
+    let container = findParentOfClass(filterTagsElem, 'auto-input');
+    if (!container) {
+        return;
+    }
+    container.classList.add('wd14tagger-filter-tags-container');
+    let button = document.createElement('button');
+    button.id = 'wd14tagger_apply_filters_button';
+    button.className = 'basic-button wd14tagger-apply-filters-button';
+    button.type = 'button';
+    button.textContent = 'Apply to current prompt';
+    button.title = 'Run the exclude/replace filter rules above against the current prompt and replace it with the filtered result';
+    button.addEventListener('click', () => handleWD14ApplyFiltersToPrompt());
+    
+    let buttonContainer = document.createElement('div');
+    buttonContainer.id = 'wd14tagger_apply_filters_button_container';
+    buttonContainer.className = 'wd14tagger-apply-filters-button-container';
+    buttonContainer.append(button);
+    container.appendChild(buttonContainer);
+}
+
+postParamBuildSteps.push(wd14TaggerInjectFilterButton);
+
+
 // Wire up the media button and prompt tab completion once the page is ready.
 setTimeout(() => {
     if (typeof promptTabComplete !== 'undefined') {

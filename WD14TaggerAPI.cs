@@ -40,10 +40,14 @@ public static class WD14TaggerAPI
     public static void Register()
     {
         API.RegisterAPICall(WD14TaggerGenerateTags, true, WD14TaggerPermissions.PermGenerateTags);
+        API.RegisterAPICall(WD14TaggerApplyFilters, true, WD14TaggerPermissions.PermGenerateTags);
     }
 
     /// <summary>Allowed characters in a HuggingFace repo ID (namespace/repo-name).</summary>
     private static readonly Regex SafeRepoIdPattern = new(@"^[A-Za-z0-9_\-/\.]+$", RegexOptions.Compiled);
+
+    /// <summary>Matches a trailing prompt-weight suffix like ":1.3" on a tag's core text.</summary>
+    private static readonly Regex TrailingWeightPattern = new(@":\s*\d+(?:\.\d+)?\s*$", RegexOptions.Compiled);
 
     /// <summary>Maximum allowed byte length for the filterTags string.</summary>
     private const int MaxFilterTagsLength = 4096;
@@ -296,9 +300,53 @@ public static class WD14TaggerAPI
     }
 
     /// <summary>
+    /// Splits a candidate tag into prompt-weighting decoration and its core text so filter rules
+    /// match the underlying tag. Surrounding parentheses and a trailing <c>:number</c> weight are
+    /// peeled off (e.g. <c>((swimsuit))</c> and <c>realistic:1.3</c> both match as their core tag),
+    /// and the decoration is preserved so kept or replaced tags retain their original weighting.
+    /// </summary>
+    private static (string Prefix, string Core, string Suffix) SplitPromptWeighting(string rawTag)
+    {
+        string working = (rawTag ?? "").Trim();
+        int leadingParens = 0;
+        int startIndex = 0;
+        while (startIndex < working.Length && (working[startIndex] == '(' || char.IsWhiteSpace(working[startIndex])))
+        {
+            if (working[startIndex] == '(')
+            {
+                leadingParens++;
+            }
+            startIndex++;
+        }
+        int endIndex = working.Length;
+        int trailingParens = 0;
+        while (endIndex > startIndex && (working[endIndex - 1] == ')' || char.IsWhiteSpace(working[endIndex - 1])))
+        {
+            if (working[endIndex - 1] == ')')
+            {
+                trailingParens++;
+            }
+            endIndex--;
+        }
+        string core = working[startIndex..endIndex];
+        string weight = "";
+        Match weightMatch = TrailingWeightPattern.Match(core);
+        if (weightMatch.Success)
+        {
+            weight = core[weightMatch.Index..].Trim();
+            core = core[..weightMatch.Index];
+        }
+        string prefix = new('(', leadingParens);
+        string suffix = weight + new string(')', trailingParens);
+        return (prefix, core, suffix);
+    }
+
+    /// <summary>
     /// Applies exact replacements, exact exclusions, wildcard replacements, and then wildcard exclusions.
     /// Wildcard matching is boundary-aware so <c>*hair</c> matches <c>hair</c>,
     /// <c>black hair</c>, and <c>arm-hair</c>, but not <c>chair</c> or <c>hair piece</c>.
+    /// Prompt-weighting decoration (surrounding parentheses and a trailing <c>:number</c> weight)
+    /// is ignored when matching and preserved on tags that are kept or replaced.
     /// </summary>
     private static string ApplyFilterTagRules(string rawTags, FilterTagRules rules)
     {
@@ -309,7 +357,8 @@ public static class WD14TaggerAPI
         List<string> updatedTags = [];
         foreach (string rawTag in rawTags.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
-            string tag = NormalizeTagText(rawTag);
+            (string prefix, string coreRaw, string suffix) = SplitPromptWeighting(rawTag);
+            string tag = NormalizeTagText(coreRaw);
             if (string.IsNullOrWhiteSpace(tag))
             {
                 continue;
@@ -341,7 +390,7 @@ public static class WD14TaggerAPI
             }
             if (!isWildcardExcluded)
             {
-                updatedTags.Add(tag);
+                updatedTags.Add(prefix + tag + suffix);
             }
         }
         return string.Join(", ", updatedTags);
@@ -441,6 +490,25 @@ public static class WD14TaggerAPI
                 try { File.Delete(tempOutputPath); } catch { /* best-effort cleanup */ }
             }
         }
+    }
+
+    /// <summary>Applies the exclude/replace filter rules to an existing tag string without running any tagger model.</summary>
+    /// <param name="session">The calling user session.</param>
+    /// <param name="tags">The raw, comma-separated tag string to filter.</param>
+    /// <param name="filterTags">Comma-separated tag filters. Use <c>tag</c> to exclude, <c>source:target</c> to replace an exact tag, or wildcard forms like <c>tag*</c>, <c>*tag</c>, and <c>*tag*</c> to substitute only the matching phrase on word boundaries.</param>
+    public static Task<JObject> WD14TaggerApplyFilters(
+        Session session,
+        string tags,
+        string filterTags = "")
+    {
+        if (string.IsNullOrWhiteSpace(tags))
+        {
+            return Task.FromResult(new JObject { ["success"] = true, ["tags"] = "" });
+        }
+        filterTags = SanitizeFilterTags(filterTags);
+        FilterTagRules filterRules = ParseFilterTagRules(filterTags);
+        string filtered = ApplyFilterTagRules(tags, filterRules);
+        return Task.FromResult(new JObject { ["success"] = true, ["tags"] = filtered });
     }
 
 }

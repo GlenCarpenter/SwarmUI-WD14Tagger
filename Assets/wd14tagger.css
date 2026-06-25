@@ -1,1 +1,22 @@
 /* WD14 Tagger extension styles */
+
+.wd14tagger-apply-filters-button {
+    display: block;
+    margin-top: 4px;
+}
+
+.wd14tagger-filter-tags-container {
+    display: flex;
+    flex-direction: column;
+    align-items: start !important;
+    width: 100%;
+}
+
+.wd14tagger-apply-filters-button-container {
+    flex: 1;
+}
+
+textarea#input_wdtaggerfiltertags {
+    width: 100%;
+    height: 16vh;
+}
