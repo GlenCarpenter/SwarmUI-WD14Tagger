@@ -210,6 +210,21 @@ Within each category, exact rules are applied before wildcard rules. When both r
 | `<phrase>*:<replacement>` | Prefix replace | Replaces only the matched prefix phrase | `red*:blue` | `red eyes` | `orange red`, `redirect` | `red eyes -> blue eyes [changed]`<br>`orange red -> orange red [ignored]`<br>`redirect -> redirect [ignored]` |
 | `*<phrase>:<replacement>` | Suffix replace | Replaces only the matched suffix phrase | `*hair:wig` | `black hair` | `hair style`, `chair` | `black hair -> black wig [changed]`<br>`hair style -> hair style [ignored]`<br>`chair -> chair [ignored]` |
 | `*<phrase>*:<replacement>` | Contains replace | Replaces only the matched phrase inside the tag | `*hair*:wig` | `black hair`, `hair style`, `big hair style` | `chair`, `hairstyle` | `black hair -> black wig [changed]`<br>`hair style -> wig style [changed]`<br>`big hair style -> big wig style [changed]`<br>`chair -> chair [ignored]`<br>`hairstyle -> hairstyle [ignored]` |
+#### Apply to current prompt
+
+The **Apply to current prompt** button (under the Filter Tags field) runs these same rules against the text already in your prompt box and replaces it with the filtered result, making it convenient to clean up a hand-written, weighted prompt without re-tagging an image.
+
+#### Note on prompt-weighting syntax
+
+When using the **Apply to current prompt** button, you may use/encounter usage of prompt-weighting syntax. The tagger models themselves do not apply this syntax.
+
+Filter rules will match the underlying tag, so standard prompt-weighting decoration is ignored when rules are evaluated. Surrounding parentheses and a trailing `:<number>` weight are peeled off before matching, then re-applied to tags that are kept or replaced:
+
+- `((sweater))` is matched as `sweater`
+- `realistic:1.3` is matched as `realistic`
+- `(blue eyes:1.2)` is matched as `blue eyes`
+
+This means a rule like `sweater` removes `((sweater))`, and a rule like `realistic:photographic` turns `(realistic:1.3)` into `(photographic:1.3)` — the weight and parentheses are preserved on the result. Only a colon immediately followed by a number is treated as a weight, so non-numeric uses of `:` are unaffected.
 
 ---
 
