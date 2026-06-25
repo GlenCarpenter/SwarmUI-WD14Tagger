@@ -224,7 +224,7 @@ Filter rules will match the underlying tag, so standard prompt-weighting decorat
 - `realistic:1.3` is matched as `realistic`
 - `(blue eyes:1.2)` is matched as `blue eyes`
 
-This means a rule like `sweater` removes `((sweater))`, and a rule like `realistic:photographic` turns `(realistic:1.3)` into `(photographic:1.3)` — the weight and parentheses are preserved on the result. Only a colon immediately followed by a number is treated as a weight, so non-numeric uses of `:` are unaffected.
+This means a rule like `sweater` removes `((sweater))`, and a rule like `realistic:photographic` turns `(realistic:1.3)` into `(photographic:1.3)`. The weight and parentheses are preserved on the result. Only a colon immediately followed by a number is treated as a weight, so non-numeric uses of `:` are unaffected.
 
 ---
 
