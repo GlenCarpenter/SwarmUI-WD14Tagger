@@ -226,6 +226,17 @@ Filter rules will match the underlying tag, so standard prompt-weighting decorat
 
 This means a rule like `sweater` removes `((sweater))`, and a rule like `realistic:photographic` turns `(realistic:1.3)` into `(photographic:1.3)`. The weight and parentheses are preserved on the result. Only a colon immediately followed by a number is treated as a weight, so non-numeric uses of `:` are unaffected.
 
+#### Quoting values with special characters
+
+Because rules are separated by commas and use `:` to split source from target, a value that needs to contain a literal comma or colon can be wrapped in double quotes. Quotes are optional and only needed for those cases — everything else works without them.
+
+- `smile:":)"` replaces the tag `smile` with `:)`
+- `":)":"smiley face, emoji"` replaces the tag `:)` with `smiley face, emoji` (which becomes two tags after insertion)
+
+Inside quotes, commas no longer split rules and the colon is no longer treated as the source/target separator, so the value is taken literally.
+
+**NOTE** - Wildcards (`*`) and the prompt-weight handling above apply only to unquoted content. They are not supported inside or around quotes.
+
 ---
 
 ### WD14 Tagger Parameter Group

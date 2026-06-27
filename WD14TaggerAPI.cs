@@ -244,11 +244,74 @@ public static class WD14TaggerAPI
         return ContainsPhraseBoundaryMatch(normalizedCandidate, sourceTag);
     }
 
+    /// <summary>Splits a string on a delimiter while treating double-quoted spans as literal, so the delimiter can appear inside a quoted rule value.</summary>
+    private static List<string> SplitRespectingQuotes(string text, char delimiter)
+    {
+        List<string> parts = [];
+        if (string.IsNullOrEmpty(text))
+        {
+            return parts;
+        }
+        StringBuilder current = new();
+        bool inQuotes = false;
+        foreach (char character in text)
+        {
+            if (character == '"')
+            {
+                inQuotes = !inQuotes;
+                current.Append(character);
+            }
+            else if (character == delimiter && !inQuotes)
+            {
+                parts.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(character);
+            }
+        }
+        parts.Add(current.ToString());
+        return parts;
+    }
+
+    /// <summary>Finds the index of the first occurrence of a character that is not inside a double-quoted span, or -1 if none.</summary>
+    private static int IndexOfOutsideQuotes(string text, char target)
+    {
+        bool inQuotes = false;
+        for (int index = 0; index < text.Length; index++)
+        {
+            char character = text[index];
+            if (character == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (character == target && !inQuotes)
+            {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>Removes a single pair of wrapping double quotes from a token if present, allowing commas, colons, and other special characters inside a rule value.</summary>
+    private static string UnquoteToken(string token)
+    {
+        string trimmed = (token ?? "").Trim();
+        if (trimmed.Length >= 2 && trimmed[0] == '"' && trimmed[^1] == '"')
+        {
+            return trimmed[1..^1];
+        }
+        return trimmed;
+    }
+
     /// <summary>
     /// Parses a comma-separated filter string into exclusion and substitution rules.
     /// Entries of the form <c>source:target</c> replace a matching source tag; all other
     /// entries exclude a matching tag from the output. A source token can use
     /// <c>tag*</c>, <c>*tag</c>, or <c>*tag*</c> for boundary-aware phrase matching.
+    /// Either side may be wrapped in double quotes (e.g. <c>smile:":)"</c> or
+    /// <c>":)":"smiley face, emoji"</c>) so the value can contain commas, colons, or parentheses.
     /// </summary>
     private static FilterTagRules ParseFilterTagRules(string filterTags)
     {
@@ -260,18 +323,18 @@ public static class WD14TaggerAPI
         {
             return new FilterTagRules(exactExcludedTags, exactReplacementTags, wildcardExclusionRules, wildcardReplacementRules);
         }
-        foreach (string rawEntry in filterTags.Split(','))
+        foreach (string rawEntry in SplitRespectingQuotes(filterTags, ','))
         {
-            string entry = NormalizeTagText(rawEntry);
+            string entry = rawEntry.Trim();
             if (string.IsNullOrWhiteSpace(entry))
             {
                 continue;
             }
-            int separatorIndex = entry.IndexOf(':');
+            int separatorIndex = IndexOfOutsideQuotes(entry, ':');
             if (separatorIndex > 0 && separatorIndex < entry.Length - 1)
             {
-                string sourceTag = entry[..separatorIndex].Trim();
-                string targetTag = NormalizeTagText(entry[(separatorIndex + 1)..]);
+                string sourceTag = UnquoteToken(entry[..separatorIndex]);
+                string targetTag = NormalizeTagText(UnquoteToken(entry[(separatorIndex + 1)..]));
                 if (!string.IsNullOrWhiteSpace(sourceTag) && !string.IsNullOrWhiteSpace(targetTag))
                 {
                     FilterTagMatchMode matchMode = ParseFilterTagMatchMode(sourceTag, out string normalizedSourceTag);
@@ -286,7 +349,7 @@ public static class WD14TaggerAPI
                     continue;
                 }
             }
-            FilterTagMatchMode exclusionMode = ParseFilterTagMatchMode(entry, out string normalizedExcludedTag);
+            FilterTagMatchMode exclusionMode = ParseFilterTagMatchMode(UnquoteToken(entry), out string normalizedExcludedTag);
             if (exclusionMode == FilterTagMatchMode.Exact)
             {
                 exactExcludedTags.Add(normalizedExcludedTag);
@@ -327,6 +390,15 @@ public static class WD14TaggerAPI
                 trailingParens++;
             }
             endIndex--;
+        }
+        // Only treat parentheses as weighting decoration when balanced, so an unmatched paren in a
+        // tag like the emoji ":)" is kept intact rather than mistaken for prompt weighting.
+        if (leadingParens != trailingParens)
+        {
+            leadingParens = 0;
+            trailingParens = 0;
+            startIndex = 0;
+            endIndex = working.Length;
         }
         string core = working[startIndex..endIndex];
         string weight = "";
