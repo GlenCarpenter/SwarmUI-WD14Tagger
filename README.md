@@ -36,6 +36,12 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 | Camie Tagger v1 | `Camais03/camie-tagger` |
 | Camie Tagger v2 | `Camais03/camie-tagger-v2` |
 | Taggerine (DINOv3 ViT-H/16+) | `lodestones/taggerine` |
+| AnimeTimm EVA02 Large v4 *(gated)* | `animetimm/eva02_large_patch14_448.dbv4-full` |
+| AnimeTimm ConvNeXtV2 Huge v4 *(gated)* | `animetimm/convnextv2_huge.dbv4-full` |
+| AnimeTimm CAFormer B36 v4 *(gated)* | `animetimm/caformer_b36.dbv4-full` |
+| AnimeTimm SwinV2 Base v4 *(gated)* | `animetimm/swinv2_base_window8_256.dbv4-full` |
+| AnimeTimm ViT Base v4 *(gated)* | `animetimm/vit_base_patch16_224.dbv4-full` |
+| AnimeTimm MobileNetV3 Large v4 *(gated)* | `animetimm/mobilenetv3_large_150d.dbv4-full` |
 
 ### Model Comparison
 
@@ -95,6 +101,39 @@ Taggerine is a large DINOv3 ViT-H/16+ tagger trained on combined Danbooru and e6
 
 **Excels at:** broad tag coverage, character detection, and non-WD vocab breadth.  
 **Tradeoffs:** much heavier first-run setup than the ONNX models. The checkpoint is about 5.3 GB and requires PyTorch-based inference, so first use is slower and disk usage is substantially higher.
+
+---
+
+#### AnimeTimm (`dbv4-full` family)
+
+[AnimeTimm](https://huggingface.co/animetimm) is a [DeepGHS](https://github.com/deepghs/animetimm) project that trains `timm` image backbones into Danbooru-style multi-label taggers. The `dbv4-full` line is trained on the WDTagger V4 dataset and covers **12,476 tags** across three categories — **general**, **character**, and **rating**. This extension reads each model's own `preprocess.json`, `selected_tags.csv`, and `categories.json`, so every backbone and input size works through one code path. Most models run via their `model.onnx` export; the few that only ship timm `safetensors` weights (such as **ConvNeXtV2 Huge**) are loaded directly with PyTorch instead.
+
+Category handling matches the rest of the extension: **general** tags use the General Threshold, **character** tags use the Character Threshold, and **rating** tags are always excluded.
+
+The six listed options span the quality/speed range, from the top-accuracy **ConvNeXtV2 Huge** and **EVA02 Large** down to the lightweight **MobileNetV3 Large**. Any other `animetimm/*` multi-label repo also works if entered as a prompt-tag model override.
+
+> **⚠️ These models are gated on HuggingFace.** That just means you have to click "Agree" on the model's page once before the files can be downloaded. There are two ways to get the model — pick whichever is easier for you.
+
+**Option 1 — Download the files yourself (easiest, no tokens or command line):**
+
+1. Open the model's HuggingFace page (e.g. https://huggingface.co/animetimm/mobilenetv3_large_150d.dbv4-full), sign in with a free account, and click the button to accept/agree to the model's terms.
+2. Go to the **Files and versions** tab and download these files:
+   - `selected_tags.csv`
+   - `categories.json`
+   - `preprocess.json`
+   - **plus the model weights:** `model.onnx` if the repo has it. A few models (e.g. **ConvNeXtV2 Huge**) have no `model.onnx` — for those, download `config.json` and `model.safetensors` instead.
+3. Put all the files (loose, no sub-folders) into a folder named after the model inside your SwarmUI install:
+   ```
+   Models/wd14_tagger/animetimm_mobilenetv3_large_150d.dbv4-full/
+   ```
+   The folder name is just the model ID with the `/` changed to `_`. For other models, swap in the matching name — e.g. `animetimm_eva02_large_patch14_448.dbv4-full`.
+
+That's it. When the files are already in that folder, the extension uses them directly and never needs to log in or download anything.
+
+**Option 2 — Let the extension download automatically:** If you'd rather have Swarm fetch the files for you, log in once with `huggingface-cli login` (or set an `HF_TOKEN` environment variable) after accepting the terms in step 1 above. The extension will then download and cache the model on first use.
+
+**Excels at:** up-to-date Danbooru vocabulary (newer than WD v3), plus a wide choice of backbones to trade accuracy against speed.
+**Tradeoffs:** you must accept the model terms on HuggingFace once; the Huge/Large variants are large downloads. Safetensors-only models (e.g. ConvNeXtV2 Huge) run through PyTorch and install `timm` on first use, so they are heavier to run than the ONNX models.
 
 ---
 

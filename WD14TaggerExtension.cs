@@ -35,7 +35,13 @@ public class WD14TaggerExtension : Extension
         "fancyfeast/joytag",
         "Camais03/camie-tagger",
         "Camais03/camie-tagger-v2",
-        "lodestones/taggerine"
+        "lodestones/taggerine",
+        "animetimm/eva02_large_patch14_448.dbv4-full",
+        "animetimm/convnextv2_huge.dbv4-full",
+        "animetimm/caformer_b36.dbv4-full",
+        "animetimm/swinv2_base_window8_256.dbv4-full",
+        "animetimm/vit_base_patch16_224.dbv4-full",
+        "animetimm/mobilenetv3_large_150d.dbv4-full"
     ];
 
     /// <summary>Available dropdown values for the WD14 tagger model parameter.</summary>
@@ -53,7 +59,13 @@ public class WD14TaggerExtension : Extension
         "fancyfeast/joytag///JoyTag",
         "Camais03/camie-tagger///Camie Tagger v1",
         "Camais03/camie-tagger-v2///Camie Tagger v2",
-        "lodestones/taggerine///Taggerine (DINOv3 ViT-H/16+)"
+        "lodestones/taggerine///Taggerine (DINOv3 ViT-H/16+)",
+        "animetimm/eva02_large_patch14_448.dbv4-full///AnimeTimm EVA02 Large v4 (gated)",
+        "animetimm/convnextv2_huge.dbv4-full///AnimeTimm ConvNeXtV2 Huge v4 (gated)",
+        "animetimm/caformer_b36.dbv4-full///AnimeTimm CAFormer B36 v4 (gated)",
+        "animetimm/swinv2_base_window8_256.dbv4-full///AnimeTimm SwinV2 Base v4 (gated)",
+        "animetimm/vit_base_patch16_224.dbv4-full///AnimeTimm ViT Base v4 (gated)",
+        "animetimm/mobilenetv3_large_150d.dbv4-full///AnimeTimm MobileNetV3 Large v4 (gated)"
     ];
 
     /// <summary>Parameter group for WD14 Tagger controls.</summary>
@@ -233,7 +245,7 @@ public class WD14TaggerExtension : Extension
         WD14TaggerGroup = new("WD14 Tagger", Toggles: false, Open: false, OrderPriority: 100, Description: "Settings for WD14 image tagging (Generate Tags button and <wd14tagger> prompt tag).");
         ModelParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Model",
-            Description: "Image tagger model to use for tag generation.",
+            Description: "Image tagger model to use for tag generation. Note: 'animetimm' models are gated on HuggingFace \u2013 you must accept each model's terms on its HuggingFace page and be logged in (huggingface-cli login or an HF_TOKEN environment variable) before they can download.",
             Default: "SmilingWolf/wd-eva02-large-tagger-v3",
             GetValues: _ => [.. AvailableModelValues],
             Group: WD14TaggerGroup,

@@ -4,7 +4,9 @@ import argparse
 import json
 import sys
 
+from .animetimm import is_animetimm_repo, run_animetimm_inference
 from .camie import CAMIE_MODELS, run_camie_inference
+from .common import TaggerUserError
 from .joytag import JOYTAG_REPO_ID, run_joytag_inference
 from .pixai import PIXAI_REPO_ID, run_pixai_inference
 from .taggerine import TAGGERINE_REPO_ID, run_taggerine_inference
@@ -21,6 +23,8 @@ def run_inference_for_repo(image_path: str, repo_id: str, model_dir: str, genera
         return run_camie_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
     if repo_id == PIXAI_REPO_ID:
         return run_pixai_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
+    if is_animetimm_repo(repo_id):
+        return run_animetimm_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
     return run_wd14_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
 
 
@@ -68,6 +72,10 @@ def main() -> None:
             args.character_threshold,
         )
         print(json.dumps({"success": True, "tags": tags}), flush=True)
+    except TaggerUserError as ex:
+        # Clean, user-facing failures: surface just the actionable message, no traceback wall.
+        print(json.dumps({"success": False, "error": str(ex)}), flush=True)
+        sys.exit(1)
     except Exception as ex:
         import traceback
 
