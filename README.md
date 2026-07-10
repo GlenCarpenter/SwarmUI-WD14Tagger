@@ -12,6 +12,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 - `<wd14tagger>` prompt tag — automatically tags the init image at generation time and injects the tags into the prompt
 - Optional prompt-tag positional overrides: `<wd14tagger:model-id,general-threshold,character-threshold>`
 - Settings managed as a **WD14 Tagger** parameter group — model, general/character thresholds, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
+- Master group toggle (off by default) so WD14 Tagger settings only apply to a generation — and only appear in image metadata — when you explicitly enable them
 - Multiple WD14 model options
 - Separate configurable confidence thresholds for **general** tags (default: 0.35) and **character** tags (default: 0.85)
 - Each threshold category can be independently toggled off to exclude that tag type entirely
@@ -281,6 +282,8 @@ Inside quotes, commas no longer split rules and the colon is no longer treated a
 ### WD14 Tagger Parameter Group
 
 All settings live in the **WD14 Tagger** group in the parameter sidebar. They are saved and restored by SwarmUI's normal parameter save/load system, including the built-in parameter memory and presets.
+
+The group has a **master toggle** in its header. Leave it **off** (the default) for normal generations — the WD14 Tagger settings are then left out of the request entirely and will **not** appear in your image metadata. Turn it **on** when you want those settings applied to a generation, for example so the `<wd14tagger>` prompt tag uses your chosen model and thresholds instead of the defaults. The **Generate Tags** button reads the settings directly and always works regardless of this toggle.
 
 > **Recommended:** Use SwarmUI **Presets** to store your preferred WD14 settings (model, thresholds, filter tags, insert mode) for reliable reuse across sessions.
 

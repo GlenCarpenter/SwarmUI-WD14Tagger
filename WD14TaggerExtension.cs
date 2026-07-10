@@ -242,7 +242,7 @@ public class WD14TaggerExtension : Extension
         StyleSheetFiles.Add("Assets/wd14tagger.css");
         ComfyUISelfStartBackend.CustomNodePaths.Add(Path.GetFullPath($"{FilePath}/ComfyNodes"));
 
-        WD14TaggerGroup = new("WD14 Tagger", Toggles: false, Open: false, OrderPriority: 100, Description: "Settings for WD14 image tagging (Generate Tags button and <wd14tagger> prompt tag).");
+        WD14TaggerGroup = new("WD14 Tagger", Toggles: true, Open: false, OrderPriority: 100, Description: "Settings for WD14 image tagging (Generate Tags button and <wd14tagger> prompt tag).\nEnable this toggle to apply these settings to a generation (for example, so the <wd14tagger> prompt tag uses your chosen model and thresholds). While the toggle is off, these settings are left out of the generation entirely and will not appear in image metadata. The Generate Tags button always works regardless of this toggle.");
         ModelParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Model",
             Description: "Image tagger model to use for tag generation. Note: 'animetimm' models are gated on HuggingFace \u2013 you must accept each model's terms on its HuggingFace page and be logged in (huggingface-cli login or an HF_TOKEN environment variable) before they can download.",
