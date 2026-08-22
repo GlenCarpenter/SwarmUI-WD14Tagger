@@ -1,9 +1,9 @@
 using System.IO;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SwarmUI.Accounts;
 using SwarmUI.Builtin_ComfyUIBackend;
+using SwarmUI.Core;
 using SwarmUI.Utils;
 using SwarmUI.WebAPI;
 
@@ -54,56 +54,29 @@ public static class WD14TaggerAPI
     /// <summary>Maximum allowed byte length for the filterTags string.</summary>
     private const int MaxFilterTagsLength = 4096;
 
-    /// <summary>Maximum allowed character length for a custom model directory.</summary>
-    private const int MaxModelDirectoryLength = 1024;
-
-    /// <summary>Sanitizes a pasted directory path, including quoted or JSON-escaped values.</summary>
-    private static string SanitizeModelDirectory(string modelDirectory)
+    /// <summary>Returns this model's directory under every configured SwarmUI model root.</summary>
+    private static List<string> GetModelDirectories(string modelId)
     {
-        string value = (modelDirectory ?? "").Trim();
-        if (string.IsNullOrEmpty(value))
+        string[] roots = [.. Program.ServerSettings.Paths.ModelRoot.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+        if (roots.Length == 0)
         {
-            return "";
+            roots = ["Models"];
         }
-        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-        {
-            try
-            {
-                value = JsonConvert.DeserializeObject<string>(value) ?? "";
-            }
-            catch (JsonException)
-            {
-                value = value[1..^1];
-            }
-        }
-        else if (value.Length >= 2 && value[0] == '\'' && value[^1] == '\'')
-        {
-            value = value[1..^1];
-        }
-        value = value.Trim().Replace("\\/", "/");
-        if (Regex.IsMatch(value, @"^[A-Za-z]:\\\\") || (value.StartsWith('/') && value.Contains("//")))
-        {
-            value = value.Replace("\\\\", "\\").Replace("//", "/");
-        }
-        value = Environment.ExpandEnvironmentVariables(value);
-        if (value == "~" || value.StartsWith($"~{Path.DirectorySeparatorChar}") || value.StartsWith($"~{Path.AltDirectorySeparatorChar}"))
-        {
-            value = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), value[1..].TrimStart('/', '\\'));
-        }
-        if (value.Any(char.IsControl))
-        {
-            throw new ArgumentException("Directory paths cannot contain control characters.");
-        }
-        return value;
+        string modelFolder = modelId.Replace('/', '_');
+        return [.. roots.Select(root => Utilities.CombinePathWithAbsolute(Environment.CurrentDirectory, root, Path.Combine("wd14_tagger", modelFolder)))];
     }
 
-    /// <summary>Resolves the final model folder used by the ComfyUI node.</summary>
-    private static string ResolveModelDirectory(string modelId, string modelDirectory)
+    /// <summary>Uses the first complete existing model, or the configured download root when no complete copy exists.</summary>
+    private static string ResolveModelDirectory(string modelId)
     {
-        string defaultDirectory = Path.Combine(
-            WD14TaggerExtension.ExtFolder, "..", "..", "..", "Models", "wd14_tagger", modelId.Replace('/', '_'));
-        string sanitizedDirectory = SanitizeModelDirectory(modelDirectory);
-        return Path.GetFullPath(string.IsNullOrWhiteSpace(sanitizedDirectory) ? defaultDirectory : sanitizedDirectory);
+        List<string> modelDirectories = GetModelDirectories(modelId);
+        string existingDirectory = modelDirectories.FirstOrDefault(directory => GetMissingModelFiles(modelId, directory).Count == 0);
+        if (existingDirectory is not null)
+        {
+            return existingDirectory;
+        }
+        int downloadRootId = (int)(Math.Abs((long)Program.ServerSettings.Paths.DownloadToRootID) % modelDirectories.Count);
+        return modelDirectories[downloadRootId];
     }
 
     /// <summary>Returns missing required model assets for the selected model family.</summary>
@@ -136,13 +109,13 @@ public static class WD14TaggerAPI
         {
             return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model ID format." });
         }
-        if (modelDirectory?.Length > MaxModelDirectoryLength || modelDirectory?.Contains('\0') == true)
+        if (!string.IsNullOrWhiteSpace(modelDirectory))
         {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model directory." });
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Custom model directories are no longer supported. Configure SwarmUI's ModelRoot and DownloadToRootID settings instead." });
         }
         try
         {
-            string resolvedDirectory = ResolveModelDirectory(modelId, modelDirectory);
+            string resolvedDirectory = ResolveModelDirectory(modelId);
             bool directoryExists = Directory.Exists(resolvedDirectory);
             List<string> missingFiles = GetMissingModelFiles(modelId, resolvedDirectory);
             bool isValid = directoryExists && missingFiles.Count == 0;
@@ -583,7 +556,7 @@ public static class WD14TaggerAPI
     /// <param name="session">The calling user session.</param>
     /// <param name="imageBase64">Base64-encoded image data (PNG/JPG/WEBP).</param>
     /// <param name="modelId">HuggingFace repo ID of the tagger model.</param>
-    /// <param name="modelDirectory">Optional folder containing this model's files. An empty value uses the model's default folder under Models/wd14_tagger.</param>
+    /// <param name="modelDirectory">Deprecated compatibility parameter. Leave empty and configure SwarmUI's ModelRoot instead.</param>
     /// <param name="generalThreshold">Confidence threshold (0.0-1.0) for general tags, or -1.0 to disable general tags.</param>
     /// <param name="characterThreshold">Confidence threshold (0.0-1.0) for character tags, or -1.0 to disable character tags.</param>
     /// <param name="filterTags">Comma-separated tag filters. Use <c>tag</c> to exclude, <c>source:target</c> to replace an exact tag, or wildcard forms like <c>tag*</c>, <c>*tag</c>, and <c>*tag*</c> to substitute only the matching phrase on word boundaries.</param>
@@ -605,17 +578,9 @@ public static class WD14TaggerAPI
         {
             return new JObject { ["success"] = false, ["error"] = "Invalid model ID format." };
         }
-        if (modelDirectory?.Length > MaxModelDirectoryLength || modelDirectory?.Contains('\0') == true)
+        if (!string.IsNullOrWhiteSpace(modelDirectory))
         {
-            return new JObject { ["success"] = false, ["error"] = "Invalid model directory." };
-        }
-        try
-        {
-            modelDirectory = ResolveModelDirectory(modelId, modelDirectory);
-        }
-        catch (Exception)
-        {
-            return new JObject { ["success"] = false, ["error"] = "Invalid model directory." };
+            return new JObject { ["success"] = false, ["error"] = "Custom model directories are no longer supported. Configure SwarmUI's ModelRoot and DownloadToRootID settings instead." };
         }
         if ((generalThreshold < 0f && generalThreshold != -1f) || generalThreshold > 1f)
         {
@@ -627,6 +592,7 @@ public static class WD14TaggerAPI
         }
         filterTags = SanitizeFilterTags(filterTags);
         FilterTagRules filterRules = ParseFilterTagRules(filterTags);
+        string resolvedModelDirectory = ResolveModelDirectory(modelId);
 
         string tempOutputPath = Path.Combine(Path.GetTempPath(), $"wd14tagger_{Guid.NewGuid():N}.txt");
         try
@@ -648,7 +614,7 @@ public static class WD14TaggerAPI
                     {
                         ["images"] = new JArray() { "1", 0 },
                         ["model_id"] = modelId,
-                        ["model_directory"] = modelDirectory,
+                        ["model_directory"] = resolvedModelDirectory,
                         ["general_threshold"] = generalThreshold,
                         ["character_threshold"] = characterThreshold,
                         ["output_path"] = tempOutputPath

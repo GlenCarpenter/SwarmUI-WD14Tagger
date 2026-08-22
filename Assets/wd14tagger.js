@@ -54,7 +54,6 @@ async function handleWD14GenerateTags(src) {
     }
 
     let modelElem = document.getElementById('input_wdtaggermodel');
-    let modelDirectoryElem = document.getElementById('input_wdtaggermodeldirectory');
     let generalThresholdElem = document.getElementById('input_wdtaggergeneralthreshold');
     let generalToggleElem = document.getElementById('input_wdtaggergeneralthreshold_toggle');
     let characterThresholdElem = document.getElementById('input_wdtaggercharacterthreshold');
@@ -63,7 +62,6 @@ async function handleWD14GenerateTags(src) {
     let insertModeElem = document.getElementById('input_wdtaggerinsertmode');
 
     let modelId = modelElem ? modelElem.value : 'SmilingWolf/wd-eva02-large-tagger-v3';
-    let modelDirectory = modelDirectoryElem ? modelDirectoryElem.value.trim() : '';
     let generalEnabled = !generalToggleElem || generalToggleElem.checked;
     let generalThreshold = generalEnabled ? (parseFloat(generalThresholdElem ? generalThresholdElem.value : '0.35') || 0.35) : -1;
     let characterEnabled = !characterToggleElem || characterToggleElem.checked;
@@ -90,7 +88,7 @@ async function handleWD14GenerateTags(src) {
         let request = new Promise((resolve, reject) => {
             genericRequest(
                 'WD14TaggerGenerateTags',
-                { imageBase64: base64Data, modelId: modelId, modelDirectory: modelDirectory, generalThreshold: generalThreshold, characterThreshold: characterThreshold, filterTags: filterTags },
+                { imageBase64: base64Data, modelId: modelId, generalThreshold: generalThreshold, characterThreshold: characterThreshold, filterTags: filterTags },
                 (data) => {
                     if (data.success) {
                         resolve(data);

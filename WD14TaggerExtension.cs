@@ -74,9 +74,6 @@ public class WD14TaggerExtension : Extension
     /// <summary>WD14 tagger model to use for tag generation.</summary>
     public static T2IRegisteredParam<string> ModelParam;
 
-    /// <summary>Optional root directory used to store and load tagger model assets.</summary>
-    public static T2IRegisteredParam<string> ModelDirectoryParam;
-
     /// <summary>Confidence threshold (0.0-1.0) for including general tags.</summary>
     public static T2IRegisteredParam<double> GeneralThresholdParam;
 
@@ -175,9 +172,9 @@ public class WD14TaggerExtension : Extension
     }
 
     /// <summary>Builds a cache key for prompt-tag results based on the effective tagger settings.</summary>
-    private static string BuildPromptTagCacheKey(string model, string modelDirectory, float generalThreshold, float characterThreshold, string filterTags)
+    private static string BuildPromptTagCacheKey(string model, float generalThreshold, float characterThreshold, string filterTags)
     {
-        return $"{model}|{modelDirectory}|{generalThreshold}|{characterThreshold}|{filterTags}";
+        return $"{model}|{generalThreshold}|{characterThreshold}|{filterTags}";
     }
 
     /// <summary>
@@ -191,9 +188,8 @@ public class WD14TaggerExtension : Extension
             return "";
         }
         string filterTags = context.Input.Get(FilterTagsParam, "");
-        string modelDirectory = context.Input.Get(ModelDirectoryParam, "");
         ResolvePromptTagSettings(data, context, out string model, out float generalThreshold, out float characterThreshold);
-        string cacheKey = BuildPromptTagCacheKey(model, modelDirectory, generalThreshold, characterThreshold, filterTags);
+        string cacheKey = BuildPromptTagCacheKey(model, generalThreshold, characterThreshold, filterTags);
         Dictionary<string, string> cache = context.Input.ExtraMeta.GetOrCreate(PromptTagCacheKey, () => new Dictionary<string, string>()) as Dictionary<string, string>;
         if (cache.TryGetValue(cacheKey, out string cached))
         {
@@ -209,7 +205,7 @@ public class WD14TaggerExtension : Extension
         JObject result;
         try
         {
-            result = WD14TaggerAPI.WD14TaggerGenerateTags(context.Input.SourceSession, source.AsBase64, model, modelDirectory,
+            result = WD14TaggerAPI.WD14TaggerGenerateTags(context.Input.SourceSession, source.AsBase64, model, "",
                 generalThreshold,
                 characterThreshold,
                 filterTags).GetAwaiter().GetResult();
@@ -256,15 +252,6 @@ public class WD14TaggerExtension : Extension
             IntentionalUnused: true,
             OrderPriority: 1
         ));
-        ModelDirectoryParam = T2IParamTypes.Register<string>(new(
-            Name: "[WD14 Tagger] Model Directory",
-            Description: "Folder containing the selected model's files, such as model.onnx and selected_tags.csv. Leave blank to use that model's default folder under 'Models/wd14_tagger'.",
-            Default: "",
-            Group: WD14TaggerGroup,
-            HideFromMetadata: true,
-            IntentionalUnused: true,
-            OrderPriority: 2
-        ));
         GeneralThresholdParam = T2IParamTypes.Register<double>(new(
             Name: "[WD14 Tagger] General Threshold",
             Description: "Confidence threshold (0.0–1.0) for including general tags. Tags below this score are excluded. Uncheck to disable general tags entirely.",
@@ -276,7 +263,7 @@ public class WD14TaggerExtension : Extension
             ViewType: ParamViewType.SLIDER,
             Toggleable: true,
             IntentionalUnused: true,
-            OrderPriority: 3
+            OrderPriority: 2
         ));
         CharacterThresholdParam = T2IParamTypes.Register<double>(new(
             Name: "[WD14 Tagger] Character Threshold",
@@ -289,7 +276,7 @@ public class WD14TaggerExtension : Extension
             ViewType: ParamViewType.SLIDER,
             Toggleable: true,
             IntentionalUnused: true,
-            OrderPriority: 4
+            OrderPriority: 3
         ));
         FilterTagsParam = T2IParamTypes.Register<string>(new(
             Name: "[WD14 Tagger] Filter Tags",
@@ -322,9 +309,8 @@ public class WD14TaggerExtension : Extension
                 return "";
             }
             string filterTags = context.Input.Get(FilterTagsParam, "");
-            string modelDirectory = context.Input.Get(ModelDirectoryParam, "");
             ResolvePromptTagSettings(data, context, out string model, out float generalThreshold, out float characterThreshold);
-            string cacheKey = BuildPromptTagCacheKey(model, modelDirectory, generalThreshold, characterThreshold, filterTags);
+            string cacheKey = BuildPromptTagCacheKey(model, generalThreshold, characterThreshold, filterTags);
             if (context.Input.ExtraMeta.TryGetValue(PromptTagCacheKey, out object existing)
                 && existing is Dictionary<string, string> cache
                 && cache.TryGetValue(cacheKey, out string cached))
