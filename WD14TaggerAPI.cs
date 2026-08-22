@@ -593,6 +593,12 @@ public static class WD14TaggerAPI
         filterTags = SanitizeFilterTags(filterTags);
         FilterTagRules filterRules = ParseFilterTagRules(filterTags);
         string resolvedModelDirectory = ResolveModelDirectory(modelId);
+        List<string> missingModelFiles = GetMissingModelFiles(modelId, resolvedModelDirectory);
+        bool requiresModelDownload = missingModelFiles.Count > 0;
+        if (requiresModelDownload)
+        {
+            Logs.Info($"WD14Tagger: Downloading model '{modelId}' to '{resolvedModelDirectory}'. Missing files: {string.Join(", ", missingModelFiles)}");
+        }
 
         string tempOutputPath = Path.Combine(Path.GetTempPath(), $"wd14tagger_{Guid.NewGuid():N}.txt");
         try
@@ -623,6 +629,10 @@ public static class WD14TaggerAPI
             };
             using Session.GenClaim claim = session.Claim(liveGens: 1);
             await ComfyUIBackendExtension.RunArbitraryWorkflowOnFirstBackend(workflow.ToString(), _ => { }, allowRemote: false);
+            if (requiresModelDownload)
+            {
+                Logs.Info($"WD14Tagger: Model '{modelId}' is ready in '{resolvedModelDirectory}'.");
+            }
             if (!File.Exists(tempOutputPath))
             {
                 return new JObject { ["success"] = false, ["error"] = "Workflow completed but produced no tag output. Ensure a self-start ComfyUI backend is available and loaded the WD14Tagger custom node." };
