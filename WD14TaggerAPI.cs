@@ -42,7 +42,6 @@ public static class WD14TaggerAPI
     {
         API.RegisterAPICall(WD14TaggerGenerateTags, true, WD14TaggerPermissions.PermGenerateTags);
         API.RegisterAPICall(WD14TaggerApplyFilters, true, WD14TaggerPermissions.PermGenerateTags);
-        API.RegisterAPICall(WD14TaggerModelStatus, true, WD14TaggerPermissions.PermGenerateTags);
     }
 
     /// <summary>Allowed characters in a HuggingFace repo ID (namespace/repo-name).</summary>
@@ -100,40 +99,6 @@ public static class WD14TaggerAPI
             missingFiles.Add("model.onnx OR (config.json + model.safetensors)");
         }
         return missingFiles;
-    }
-
-    /// <summary>Returns the resolved storage paths and download state for a tagger model.</summary>
-    public static Task<JObject> WD14TaggerModelStatus(Session session, string modelId = DefaultModelId, string modelDirectory = "")
-    {
-        if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
-        {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model ID format." });
-        }
-        if (!string.IsNullOrWhiteSpace(modelDirectory))
-        {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Custom model directories are no longer supported. Configure SwarmUI's ModelRoot and DownloadToRootID settings instead." });
-        }
-        try
-        {
-            string resolvedDirectory = ResolveModelDirectory(modelId);
-            bool directoryExists = Directory.Exists(resolvedDirectory);
-            List<string> missingFiles = GetMissingModelFiles(modelId, resolvedDirectory);
-            bool isValid = directoryExists && missingFiles.Count == 0;
-            return Task.FromResult(new JObject
-            {
-                ["success"] = true,
-                ["directory"] = resolvedDirectory,
-                ["modelPath"] = resolvedDirectory,
-                ["directoryExists"] = directoryExists,
-                ["isDownloaded"] = isValid,
-                ["isValid"] = isValid,
-                ["missingFiles"] = new JArray(missingFiles)
-            });
-        }
-        catch (Exception)
-        {
-            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model directory." });
-        }
     }
 
     /// <summary>Supported matching styles for filter rule source tags.</summary>
@@ -556,7 +521,6 @@ public static class WD14TaggerAPI
     /// <param name="session">The calling user session.</param>
     /// <param name="imageBase64">Base64-encoded image data (PNG/JPG/WEBP).</param>
     /// <param name="modelId">HuggingFace repo ID of the tagger model.</param>
-    /// <param name="modelDirectory">Deprecated compatibility parameter. Leave empty and configure SwarmUI's ModelRoot instead.</param>
     /// <param name="generalThreshold">Confidence threshold (0.0-1.0) for general tags, or -1.0 to disable general tags.</param>
     /// <param name="characterThreshold">Confidence threshold (0.0-1.0) for character tags, or -1.0 to disable character tags.</param>
     /// <param name="filterTags">Comma-separated tag filters. Use <c>tag</c> to exclude, <c>source:target</c> to replace an exact tag, or wildcard forms like <c>tag*</c>, <c>*tag</c>, and <c>*tag*</c> to substitute only the matching phrase on word boundaries.</param>
@@ -564,7 +528,6 @@ public static class WD14TaggerAPI
         Session session,
         string imageBase64,
         string modelId = DefaultModelId,
-        string modelDirectory = "",
         float generalThreshold = DefaultGeneralThreshold,
         float characterThreshold = DefaultCharacterThreshold,
         string filterTags = "")
@@ -577,10 +540,6 @@ public static class WD14TaggerAPI
         if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
         {
             return new JObject { ["success"] = false, ["error"] = "Invalid model ID format." };
-        }
-        if (!string.IsNullOrWhiteSpace(modelDirectory))
-        {
-            return new JObject { ["success"] = false, ["error"] = "Custom model directories are no longer supported. Configure SwarmUI's ModelRoot and DownloadToRootID settings instead." };
         }
         if ((generalThreshold < 0f && generalThreshold != -1f) || generalThreshold > 1f)
         {

@@ -205,7 +205,7 @@ public class WD14TaggerExtension : Extension
         JObject result;
         try
         {
-            result = WD14TaggerAPI.WD14TaggerGenerateTags(context.Input.SourceSession, source.AsBase64, model, "",
+            result = WD14TaggerAPI.WD14TaggerGenerateTags(context.Input.SourceSession, source.AsBase64, model,
                 generalThreshold,
                 characterThreshold,
                 filterTags).GetAwaiter().GetResult();
