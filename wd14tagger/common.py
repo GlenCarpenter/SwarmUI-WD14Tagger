@@ -44,12 +44,11 @@ def load_image_rgb(image_path: str) -> Image.Image:
 
 
 def ensure_hf_files(repo_id: str, model_dir: str, filenames: list[str], progress_label: str) -> str:
-    """Download a set of HuggingFace files into a repo-specific cache directory."""
+    """Download a set of HuggingFace files into the selected model directory."""
     from huggingface_hub.errors import EntryNotFoundError, GatedRepoError, RepositoryNotFoundError
     from huggingface_hub.utils import HfHubHTTPError
 
-    safe_name = repo_id.replace("/", "_")
-    model_path = os.path.join(model_dir, safe_name)
+    model_path = model_dir
     os.makedirs(model_path, exist_ok=True)
     missing = [filename for filename in filenames if not os.path.exists(os.path.join(model_path, filename))]
     if missing:

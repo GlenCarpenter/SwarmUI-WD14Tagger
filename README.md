@@ -17,7 +17,8 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 - Separate configurable confidence thresholds for **general** tags (default: 0.35) and **character** tags (default: 0.85)
 - Each threshold category can be independently toggled off to exclude that tag type entirely
 - Tag filter list — exclude or replace exact tags, plus boundary-aware wildcard matching for start / end / contains phrase rules
-- Models are downloaded automatically on first use and cached locally under `Models/wd14_tagger/`
+- Models are loaded from the `wd14_tagger` folder under each configured SwarmUI `ModelRoot`
+- Models are downloaded automatically on first use to the root selected by SwarmUI's `DownloadToRootID` setting
 - All tagging runs through the self-start ComfyUI backend queue via a custom Comfy node, so heavy tagger execution shares the backend slot with normal generations
 
 ## Supported Models
@@ -123,7 +124,7 @@ The six listed options span the quality/speed range, from the top-accuracy **Con
    - `categories.json`
    - `preprocess.json`
    - **plus the model weights:** `model.onnx` if the repo has it. A few models (e.g. **ConvNeXtV2 Huge**) have no `model.onnx` — for those, download `config.json` and `model.safetensors` instead.
-3. Put all the files (loose, no sub-folders) into a folder named after the model inside your SwarmUI install:
+3. Put all the files (loose, no sub-folders) into a folder named after the model under any configured SwarmUI `ModelRoot` (`Models` is the default):
    ```
    Models/wd14_tagger/animetimm_mobilenetv3_large_150d.dbv4-full/
    ```
@@ -188,6 +189,17 @@ The **Generate Tags** button appears in the image viewer's media button bar (the
 1. Generate or load an image so it appears in the viewer.
 2. Click **Generate Tags**.
 3. The prompt box is populated with the detected tags according to the current **Insert Mode** setting.
+
+### Model Storage
+
+The extension uses SwarmUI's `ModelRoot` and `DownloadToRootID` server settings. Each model is stored under `wd14_tagger` in a repo-specific folder:
+
+```
+C:/AI/Models/wd14_tagger/SmilingWolf_wd-eva02-large-tagger-v3/model.onnx
+C:/AI/Models/wd14_tagger/SmilingWolf_wd-eva02-large-tagger-v3/selected_tags.csv
+```
+
+When multiple roots are configured, the extension uses the first root in `ModelRoot` order that already contains a complete copy of the selected model. If no complete copy exists, required files are downloaded under the root selected by `DownloadToRootID`.
 
 If `<wd14tagger>` is already present anywhere in the prompt when the button is clicked, the tag is replaced in-place with the generated tags. Otherwise the **Insert Mode** (Replace / Prepend / Append) controls where tags are inserted.
 

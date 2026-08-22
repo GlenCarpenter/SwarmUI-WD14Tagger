@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 
 from .animetimm import is_animetimm_repo, run_animetimm_inference
@@ -41,8 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model_dir",
         type=str,
-        default="Models/wd14_tagger",
-        help="Local directory to store downloaded models",
+        default="",
+        help="Local directory containing the selected model's files",
     )
     parser.add_argument(
         "--general_threshold",
@@ -63,11 +64,12 @@ def main() -> None:
     """Stable CLI wrapper used by the C# API and Comfy node."""
     parser = build_parser()
     args = parser.parse_args()
+    model_dir = args.model_dir or os.path.join("Models", "wd14_tagger", args.repo_id.replace("/", "_"))
     try:
         tags = run_inference_for_repo(
             args.image_path,
             args.repo_id,
-            args.model_dir,
+            model_dir,
             args.general_threshold,
             args.character_threshold,
         )

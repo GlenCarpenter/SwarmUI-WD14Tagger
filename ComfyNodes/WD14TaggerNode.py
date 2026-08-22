@@ -92,6 +92,7 @@ class WD14TaggerGenerate:
             "required": {
                 "images": ("IMAGE",),
                 "model_id": ("STRING", {"default": "SmilingWolf/wd-eva02-large-tagger-v3"}),
+                "model_directory": ("STRING", {"default": ""}),
                 "general_threshold": ("FLOAT", {"default": 0.35, "min": -1.0, "max": 1.0, "step": 0.01}),
                 "character_threshold": ("FLOAT", {"default": 0.85, "min": -1.0, "max": 1.0, "step": 0.01}),
                 "output_path": ("STRING", {"default": ""}),
@@ -104,7 +105,7 @@ class WD14TaggerGenerate:
     OUTPUT_NODE = True
     DESCRIPTION = "Runs the SwarmUI WD14 tagger through the Comfy backend queue and writes the tags to output_path."
 
-    def generate_tags(self, images, model_id, general_threshold, character_threshold, output_path):
+    def generate_tags(self, images, model_id, model_directory, general_threshold, character_threshold, output_path):
         import numpy as np
         from PIL import Image as PILImage
 
@@ -117,7 +118,10 @@ class WD14TaggerGenerate:
         temp_root = tempfile.mkdtemp(prefix="wd14tagger_")
         temp_image_path = os.path.join(temp_root, "image.png")
         script_path = os.path.join(_EXT_DIR, "wd14_tagger_inference.py")
-        model_dir = os.path.abspath(os.path.join(_EXT_DIR, "..", "..", "..", "Models", "wd14_tagger"))
+        default_model_dir = os.path.join(
+            _EXT_DIR, "..", "..", "..", "Models", "wd14_tagger", model_id.replace("/", "_")
+        )
+        model_dir = os.path.abspath(os.path.expanduser(model_directory.strip() or default_model_dir))
 
         try:
             image = 255.0 * images[0].cpu().numpy()

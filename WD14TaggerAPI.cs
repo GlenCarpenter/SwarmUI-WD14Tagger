@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using SwarmUI.Accounts;
 using SwarmUI.Builtin_ComfyUIBackend;
+using SwarmUI.Core;
 using SwarmUI.Utils;
 using SwarmUI.WebAPI;
 
@@ -51,6 +52,54 @@ public static class WD14TaggerAPI
 
     /// <summary>Maximum allowed byte length for the filterTags string.</summary>
     private const int MaxFilterTagsLength = 4096;
+
+    /// <summary>Returns this model's directory under every configured SwarmUI model root.</summary>
+    private static List<string> GetModelDirectories(string modelId)
+    {
+        string[] roots = [.. Program.ServerSettings.Paths.ModelRoot.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+        if (roots.Length == 0)
+        {
+            roots = ["Models"];
+        }
+        string modelFolder = modelId.Replace('/', '_');
+        return [.. roots.Select(root => Utilities.CombinePathWithAbsolute(Environment.CurrentDirectory, root, Path.Combine("wd14_tagger", modelFolder)))];
+    }
+
+    /// <summary>Uses the first complete existing model, or the configured download root when no complete copy exists.</summary>
+    private static string ResolveModelDirectory(string modelId)
+    {
+        List<string> modelDirectories = GetModelDirectories(modelId);
+        string existingDirectory = modelDirectories.FirstOrDefault(directory => GetMissingModelFiles(modelId, directory).Count == 0);
+        if (existingDirectory is not null)
+        {
+            return existingDirectory;
+        }
+        int downloadRootId = (int)(Math.Abs((long)Program.ServerSettings.Paths.DownloadToRootID) % modelDirectories.Count);
+        return modelDirectories[downloadRootId];
+    }
+
+    /// <summary>Returns missing required model assets for the selected model family.</summary>
+    private static List<string> GetMissingModelFiles(string modelId, string directory)
+    {
+        bool HasFile(string filename) => File.Exists(Path.Combine(directory, filename));
+        List<string> requiredFiles = modelId switch
+        {
+            "fancyfeast/joytag" => ["model.onnx", "top_tags.txt"],
+            "Camais03/camie-tagger" => ["model_initial.onnx", "model_initial_metadata.json"],
+            "Camais03/camie-tagger-v2" => ["camie-tagger-v2.onnx", "camie-tagger-v2-metadata.json"],
+            "lodestones/taggerine" => ["tagger_proto.safetensors", "tagger_vocab_with_categories_and_alias_updated.json", "inference_tagger_standalone.py"],
+            _ when modelId.StartsWith("animetimm/", StringComparison.OrdinalIgnoreCase) => ["selected_tags.csv", "categories.json", "preprocess.json"],
+            _ => ["model.onnx", "selected_tags.csv"]
+        };
+        List<string> missingFiles = requiredFiles.Where(file => !HasFile(file)).ToList();
+        if (modelId.StartsWith("animetimm/", StringComparison.OrdinalIgnoreCase)
+            && !HasFile("model.onnx")
+            && !(HasFile("config.json") && HasFile("model.safetensors")))
+        {
+            missingFiles.Add("model.onnx OR (config.json + model.safetensors)");
+        }
+        return missingFiles;
+    }
 
     /// <summary>Supported matching styles for filter rule source tags.</summary>
     private enum FilterTagMatchMode
@@ -502,6 +551,13 @@ public static class WD14TaggerAPI
         }
         filterTags = SanitizeFilterTags(filterTags);
         FilterTagRules filterRules = ParseFilterTagRules(filterTags);
+        string resolvedModelDirectory = ResolveModelDirectory(modelId);
+        List<string> missingModelFiles = GetMissingModelFiles(modelId, resolvedModelDirectory);
+        bool requiresModelDownload = missingModelFiles.Count > 0;
+        if (requiresModelDownload)
+        {
+            Logs.Info($"WD14Tagger: Downloading model '{modelId}' to '{resolvedModelDirectory}'. Missing files: {string.Join(", ", missingModelFiles)}");
+        }
 
         string tempOutputPath = Path.Combine(Path.GetTempPath(), $"wd14tagger_{Guid.NewGuid():N}.txt");
         try
@@ -523,6 +579,7 @@ public static class WD14TaggerAPI
                     {
                         ["images"] = new JArray() { "1", 0 },
                         ["model_id"] = modelId,
+                        ["model_directory"] = resolvedModelDirectory,
                         ["general_threshold"] = generalThreshold,
                         ["character_threshold"] = characterThreshold,
                         ["output_path"] = tempOutputPath
@@ -531,6 +588,10 @@ public static class WD14TaggerAPI
             };
             using Session.GenClaim claim = session.Claim(liveGens: 1);
             await ComfyUIBackendExtension.RunArbitraryWorkflowOnFirstBackend(workflow.ToString(), _ => { }, allowRemote: false);
+            if (requiresModelDownload)
+            {
+                Logs.Info($"WD14Tagger: Model '{modelId}' is ready in '{resolvedModelDirectory}'.");
+            }
             if (!File.Exists(tempOutputPath))
             {
                 return new JObject { ["success"] = false, ["error"] = "Workflow completed but produced no tag output. Ensure a self-start ComfyUI backend is available and loaded the WD14Tagger custom node." };
