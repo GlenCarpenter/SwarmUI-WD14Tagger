@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SwarmUI.Accounts;
 using SwarmUI.Builtin_ComfyUIBackend;
@@ -41,6 +42,7 @@ public static class WD14TaggerAPI
     {
         API.RegisterAPICall(WD14TaggerGenerateTags, true, WD14TaggerPermissions.PermGenerateTags);
         API.RegisterAPICall(WD14TaggerApplyFilters, true, WD14TaggerPermissions.PermGenerateTags);
+        API.RegisterAPICall(WD14TaggerModelStatus, true, WD14TaggerPermissions.PermGenerateTags);
     }
 
     /// <summary>Allowed characters in a HuggingFace repo ID (namespace/repo-name).</summary>
@@ -51,6 +53,115 @@ public static class WD14TaggerAPI
 
     /// <summary>Maximum allowed byte length for the filterTags string.</summary>
     private const int MaxFilterTagsLength = 4096;
+
+    /// <summary>Maximum allowed character length for a custom model directory.</summary>
+    private const int MaxModelDirectoryLength = 1024;
+
+    /// <summary>Sanitizes a pasted directory path, including quoted or JSON-escaped values.</summary>
+    private static string SanitizeModelDirectory(string modelDirectory)
+    {
+        string value = (modelDirectory ?? "").Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return "";
+        }
+        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+        {
+            try
+            {
+                value = JsonConvert.DeserializeObject<string>(value) ?? "";
+            }
+            catch (JsonException)
+            {
+                value = value[1..^1];
+            }
+        }
+        else if (value.Length >= 2 && value[0] == '\'' && value[^1] == '\'')
+        {
+            value = value[1..^1];
+        }
+        value = value.Trim().Replace("\\/", "/");
+        if (Regex.IsMatch(value, @"^[A-Za-z]:\\\\") || (value.StartsWith('/') && value.Contains("//")))
+        {
+            value = value.Replace("\\\\", "\\").Replace("//", "/");
+        }
+        value = Environment.ExpandEnvironmentVariables(value);
+        if (value == "~" || value.StartsWith($"~{Path.DirectorySeparatorChar}") || value.StartsWith($"~{Path.AltDirectorySeparatorChar}"))
+        {
+            value = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), value[1..].TrimStart('/', '\\'));
+        }
+        if (value.Any(char.IsControl))
+        {
+            throw new ArgumentException("Directory paths cannot contain control characters.");
+        }
+        return value;
+    }
+
+    /// <summary>Resolves the final model folder used by the ComfyUI node.</summary>
+    private static string ResolveModelDirectory(string modelId, string modelDirectory)
+    {
+        string defaultDirectory = Path.Combine(
+            WD14TaggerExtension.ExtFolder, "..", "..", "..", "Models", "wd14_tagger", modelId.Replace('/', '_'));
+        string sanitizedDirectory = SanitizeModelDirectory(modelDirectory);
+        return Path.GetFullPath(string.IsNullOrWhiteSpace(sanitizedDirectory) ? defaultDirectory : sanitizedDirectory);
+    }
+
+    /// <summary>Returns missing required model assets for the selected model family.</summary>
+    private static List<string> GetMissingModelFiles(string modelId, string directory)
+    {
+        bool HasFile(string filename) => File.Exists(Path.Combine(directory, filename));
+        List<string> requiredFiles = modelId switch
+        {
+            "fancyfeast/joytag" => ["model.onnx", "top_tags.txt"],
+            "Camais03/camie-tagger" => ["model_initial.onnx", "model_initial_metadata.json"],
+            "Camais03/camie-tagger-v2" => ["camie-tagger-v2.onnx", "camie-tagger-v2-metadata.json"],
+            "lodestones/taggerine" => ["tagger_proto.safetensors", "tagger_vocab_with_categories_and_alias_updated.json", "inference_tagger_standalone.py"],
+            _ when modelId.StartsWith("animetimm/", StringComparison.OrdinalIgnoreCase) => ["selected_tags.csv", "categories.json", "preprocess.json"],
+            _ => ["model.onnx", "selected_tags.csv"]
+        };
+        List<string> missingFiles = requiredFiles.Where(file => !HasFile(file)).ToList();
+        if (modelId.StartsWith("animetimm/", StringComparison.OrdinalIgnoreCase)
+            && !HasFile("model.onnx")
+            && !(HasFile("config.json") && HasFile("model.safetensors")))
+        {
+            missingFiles.Add("model.onnx OR (config.json + model.safetensors)");
+        }
+        return missingFiles;
+    }
+
+    /// <summary>Returns the resolved storage paths and download state for a tagger model.</summary>
+    public static Task<JObject> WD14TaggerModelStatus(Session session, string modelId = DefaultModelId, string modelDirectory = "")
+    {
+        if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model ID format." });
+        }
+        if (modelDirectory?.Length > MaxModelDirectoryLength || modelDirectory?.Contains('\0') == true)
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model directory." });
+        }
+        try
+        {
+            string resolvedDirectory = ResolveModelDirectory(modelId, modelDirectory);
+            bool directoryExists = Directory.Exists(resolvedDirectory);
+            List<string> missingFiles = GetMissingModelFiles(modelId, resolvedDirectory);
+            bool isValid = directoryExists && missingFiles.Count == 0;
+            return Task.FromResult(new JObject
+            {
+                ["success"] = true,
+                ["directory"] = resolvedDirectory,
+                ["modelPath"] = resolvedDirectory,
+                ["directoryExists"] = directoryExists,
+                ["isDownloaded"] = isValid,
+                ["isValid"] = isValid,
+                ["missingFiles"] = new JArray(missingFiles)
+            });
+        }
+        catch (Exception)
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Invalid model directory." });
+        }
+    }
 
     /// <summary>Supported matching styles for filter rule source tags.</summary>
     private enum FilterTagMatchMode
@@ -472,6 +583,7 @@ public static class WD14TaggerAPI
     /// <param name="session">The calling user session.</param>
     /// <param name="imageBase64">Base64-encoded image data (PNG/JPG/WEBP).</param>
     /// <param name="modelId">HuggingFace repo ID of the tagger model.</param>
+    /// <param name="modelDirectory">Optional folder containing this model's files. An empty value uses the model's default folder under Models/wd14_tagger.</param>
     /// <param name="generalThreshold">Confidence threshold (0.0-1.0) for general tags, or -1.0 to disable general tags.</param>
     /// <param name="characterThreshold">Confidence threshold (0.0-1.0) for character tags, or -1.0 to disable character tags.</param>
     /// <param name="filterTags">Comma-separated tag filters. Use <c>tag</c> to exclude, <c>source:target</c> to replace an exact tag, or wildcard forms like <c>tag*</c>, <c>*tag</c>, and <c>*tag*</c> to substitute only the matching phrase on word boundaries.</param>
@@ -479,6 +591,7 @@ public static class WD14TaggerAPI
         Session session,
         string imageBase64,
         string modelId = DefaultModelId,
+        string modelDirectory = "",
         float generalThreshold = DefaultGeneralThreshold,
         float characterThreshold = DefaultCharacterThreshold,
         string filterTags = "")
@@ -491,6 +604,18 @@ public static class WD14TaggerAPI
         if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
         {
             return new JObject { ["success"] = false, ["error"] = "Invalid model ID format." };
+        }
+        if (modelDirectory?.Length > MaxModelDirectoryLength || modelDirectory?.Contains('\0') == true)
+        {
+            return new JObject { ["success"] = false, ["error"] = "Invalid model directory." };
+        }
+        try
+        {
+            modelDirectory = ResolveModelDirectory(modelId, modelDirectory);
+        }
+        catch (Exception)
+        {
+            return new JObject { ["success"] = false, ["error"] = "Invalid model directory." };
         }
         if ((generalThreshold < 0f && generalThreshold != -1f) || generalThreshold > 1f)
         {
@@ -523,6 +648,7 @@ public static class WD14TaggerAPI
                     {
                         ["images"] = new JArray() { "1", 0 },
                         ["model_id"] = modelId,
+                        ["model_directory"] = modelDirectory,
                         ["general_threshold"] = generalThreshold,
                         ["character_threshold"] = characterThreshold,
                         ["output_path"] = tempOutputPath

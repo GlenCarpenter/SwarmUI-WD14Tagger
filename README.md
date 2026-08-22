@@ -11,13 +11,14 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 - **Generate Tags** button in the image viewer (via the standard media button bar)
 - `<wd14tagger>` prompt tag — automatically tags the init image at generation time and injects the tags into the prompt
 - Optional prompt-tag positional overrides: `<wd14tagger:model-id,general-threshold,character-threshold>`
-- Settings managed as a **WD14 Tagger** parameter group — model, general/character thresholds, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
+- Settings managed as a **WD14 Tagger** parameter group — model, model directory, general/character thresholds, filter tags, and insert mode are saved and loaded like any other SwarmUI parameter
 - Master group toggle (off by default) so WD14 Tagger settings only apply to a generation — and only appear in image metadata — when you explicitly enable them
 - Multiple WD14 model options
 - Separate configurable confidence thresholds for **general** tags (default: 0.35) and **character** tags (default: 0.85)
 - Each threshold category can be independently toggled off to exclude that tag type entirely
 - Tag filter list — exclude or replace exact tags, plus boundary-aware wildcard matching for start / end / contains phrase rules
 - Models are downloaded automatically on first use and cached locally under `Models/wd14_tagger/`
+- Optional per-model folder override for keeping tagger assets on another drive or in another directory
 - All tagging runs through the self-start ComfyUI backend queue via a custom Comfy node, so heavy tagger execution shares the backend slot with normal generations
 
 ## Supported Models
@@ -188,6 +189,19 @@ The **Generate Tags** button appears in the image viewer's media button bar (the
 1. Generate or load an image so it appears in the viewer.
 2. Click **Generate Tags**.
 3. The prompt box is populated with the detected tags according to the current **Insert Mode** setting.
+
+### Custom Model Directory
+
+Set **[WD14 Tagger] Model Directory** to the folder that directly contains the selected model's files:
+
+```
+D:/AI/taggers/SmilingWolf_wd-eva02-large-tagger-v3/model.onnx
+D:/AI/taggers/SmilingWolf_wd-eva02-large-tagger-v3/selected_tags.csv
+```
+
+In this example, paste `D:/AI/taggers/SmilingWolf_wd-eva02-large-tagger-v3`, not `D:/AI/taggers`. The extension uses files already present there and downloads any required missing companion files into that same folder. Each model retains its own directory setting. Leaving the field blank uses that model's repo-specific folder under `Models/wd14_tagger/`.
+
+Pasted paths are trimmed, surrounding single or double quotation marks are removed, common escaped separators are resolved, environment variables and a leading `~` are expanded, and relative paths are resolved from the SwarmUI working directory. The normalized absolute path is shown after validation. The status below the field verifies the exact files required by the selected model and lists anything missing; missing files are downloaded into that directory on first use.
 
 If `<wd14tagger>` is already present anywhere in the prompt when the button is clicked, the tag is replaced in-place with the generated tags. Otherwise the **Insert Mode** (Replace / Prepend / Append) controls where tags are inserted.
 
