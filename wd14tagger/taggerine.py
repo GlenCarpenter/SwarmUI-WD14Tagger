@@ -1,17 +1,27 @@
 """Taggerine PyTorch inference helpers."""
 
+import hashlib
 import importlib.util
 import json
 import os
 import sys
 
-from .common import ensure_hf_files, log_info, remove_underscore
-
+from .common import TaggerUserError, ensure_hf_files, log_info, remove_underscore
 
 TAGGERINE_REPO_ID = "lodestones/taggerine"
 TAGGERINE_CHECKPOINT = "tagger_proto.safetensors"
 TAGGERINE_VOCAB = "tagger_vocab_with_categories_and_alias_updated.json"
 TAGGERINE_SCRIPT = "inference_tagger_standalone.py"
+TAGGERINE_SCRIPT_SHA256 = "ccbc59acf34cfb99d0f59c8c16fa372e02e9d6fc8664c84b5495d819158b9377"
+
+
+def _file_sha256(path: str) -> str:
+    """Hash a file without loading it all into memory."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def ensure_taggerine_assets(repo_id: str, model_dir: str) -> tuple[str, str, str]:
@@ -22,10 +32,16 @@ def ensure_taggerine_assets(repo_id: str, model_dir: str) -> tuple[str, str, str
         [TAGGERINE_CHECKPOINT, TAGGERINE_VOCAB, TAGGERINE_SCRIPT],
         f"Downloading Taggerine assets for {repo_id}...",
     )
+    script_path = os.path.join(model_path, TAGGERINE_SCRIPT)
+    if _file_sha256(script_path) != TAGGERINE_SCRIPT_SHA256:
+        os.remove(script_path)
+        ensure_hf_files(repo_id, model_dir, [TAGGERINE_SCRIPT], "Downloading the reviewed Taggerine inference runtime...")
+        if _file_sha256(script_path) != TAGGERINE_SCRIPT_SHA256:
+            raise TaggerUserError("The Taggerine inference runtime failed its SHA-256 integrity check and was not executed.")
     return (
         os.path.join(model_path, TAGGERINE_CHECKPOINT),
         os.path.join(model_path, TAGGERINE_VOCAB),
-        os.path.join(model_path, TAGGERINE_SCRIPT),
+        script_path,
     )
 
 

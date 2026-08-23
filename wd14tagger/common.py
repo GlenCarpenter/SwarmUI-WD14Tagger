@@ -3,10 +3,10 @@
 import json
 import os
 
-import numpy as np
-from PIL import Image
 from huggingface_hub import hf_hub_download
+from PIL import Image
 
+from .models import model_revision
 
 IMAGE_SIZE = 448
 
@@ -44,10 +44,18 @@ def load_image_rgb(image_path: str) -> Image.Image:
 
 
 def ensure_hf_files(repo_id: str, model_dir: str, filenames: list[str], progress_label: str) -> str:
-    """Download a set of HuggingFace files into the selected model directory."""
-    from huggingface_hub.errors import EntryNotFoundError, GatedRepoError, RepositoryNotFoundError
+    """Download model files from the reviewed immutable HuggingFace revision."""
+    from huggingface_hub.errors import (
+        EntryNotFoundError,
+        GatedRepoError,
+        RepositoryNotFoundError,
+    )
     from huggingface_hub.utils import HfHubHTTPError
 
+    revision = model_revision(repo_id)
+    for filename in filenames:
+        if filename != os.path.basename(filename):
+            raise TaggerUserError(f"Refusing unsafe model filename: {filename}")
     model_path = model_dir
     os.makedirs(model_path, exist_ok=True)
     missing = [filename for filename in filenames if not os.path.exists(os.path.join(model_path, filename))]
@@ -55,7 +63,7 @@ def ensure_hf_files(repo_id: str, model_dir: str, filenames: list[str], progress
         print(json.dumps({"progress": progress_label}), flush=True)
         for filename in missing:
             try:
-                hf_hub_download(repo_id=repo_id, filename=filename, local_dir=model_path)
+                hf_hub_download(repo_id=repo_id, filename=filename, revision=revision, local_dir=model_path)
             except EntryNotFoundError:
                 # Re-raise untouched: callers (e.g. animetimm) rely on this to fall back to other file formats.
                 raise
