@@ -19,8 +19,14 @@ import os
 import numpy as np
 from PIL import Image
 
-from .common import ensure_hf_files, load_image_rgb, log_info, onnx_providers, remove_underscore
-
+from .common import (
+    TaggerUserError,
+    ensure_hf_files,
+    load_image_rgb,
+    log_info,
+    onnx_providers,
+    remove_underscore,
+)
 
 ANIMETIMM_PREFIX = "animetimm/"
 
@@ -235,16 +241,16 @@ def _run_onnx_prediction(model_path: str, img_batch: np.ndarray) -> np.ndarray:
 
 
 def _ensure_timm() -> None:
-    """Ensure the timm package is importable, installing it on demand if needed."""
+    """Require timm without modifying the Comfy environment during a generation."""
     try:
         import timm  # noqa: F401
         return
-    except ImportError:
-        import subprocess
-        import sys
-
-        log_info("Installing 'timm' for animetimm safetensors inference...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "timm"], check=True)
+    except ImportError as ex:
+        raise TaggerUserError(
+            "AnimeTimm safetensors inference requires the 'timm' package. "
+            "Install it in the ComfyUI Python environment, then restart SwarmUI. "
+            "The extension does not install packages during a generation."
+        ) from ex
 
 
 def _run_timm_prediction(model_path: str, img_batch: np.ndarray, num_tags: int) -> np.ndarray:

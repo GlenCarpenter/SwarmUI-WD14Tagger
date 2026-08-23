@@ -6,18 +6,27 @@ generation work instead of running as a parallel server-side subprocess.
 """
 
 import json
+import math
 import os
+import re
 import shutil
-import subprocess
+# A subprocess keeps tagger allocations isolated and is invoked without a shell.
+import subprocess  # nosec B404
 import sys
 import tempfile
 
-
 _EXT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _EXT_DIR not in sys.path:
+    sys.path.insert(0, _EXT_DIR)
+
+from wd14tagger.models import require_supported_model  # noqa: E402
+
+_OUTPUT_NAME_PATTERN = re.compile(r"^wd14tagger_[0-9a-f]{32}\.txt$")
+_SUBPROCESS_TIMEOUT_SECONDS = 60 * 60
 
 
-def _ensure_deps():
-    """Install the WD14Tagger Python requirements into the Comfy Python env if needed."""
+def _require_deps():
+    """Require extension dependencies without modifying the Comfy environment at runtime."""
     missing = []
     for module_name in ["numpy", "PIL", "huggingface_hub", "onnxruntime"]:
         try:
@@ -27,11 +36,12 @@ def _ensure_deps():
     if not missing:
         return
     req_path = os.path.join(_EXT_DIR, "requirements.txt")
-    if not os.path.exists(req_path):
-        raise RuntimeError(f"[WD14Tagger] requirements.txt not found at {req_path}")
-    print(f"[WD14Tagger] Installing dependencies for missing modules: {', '.join(missing)}")
-    subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "-r", req_path], check=True)
-    print("[WD14Tagger] Dependencies installed.")
+    raise RuntimeError(
+        "[WD14Tagger] Missing Python modules: "
+        f"{', '.join(missing)}. Install the reviewed dependencies with "
+        f"'{sys.executable} -m pip install -r {req_path}', then restart SwarmUI. "
+        "The extension does not install packages during a generation."
+    )
 
 
 def _ensure_runtime_modules():
@@ -83,6 +93,37 @@ def _subprocess_env() -> dict:
     return env
 
 
+def _validated_output_path(output_path: str) -> str:
+    """Only allow the random temporary output files created by the Swarm API."""
+    resolved = os.path.normcase(os.path.realpath(os.path.abspath(output_path or "")))
+    allowed_temp_dirs = {os.path.normcase(os.path.realpath(tempfile.gettempdir()))}
+    if local_app_data := os.environ.get("LOCALAPPDATA"):
+        allowed_temp_dirs.add(os.path.normcase(os.path.realpath(os.path.join(local_app_data, "Temp"))))
+    if os.path.dirname(resolved) not in allowed_temp_dirs or not _OUTPUT_NAME_PATTERN.fullmatch(os.path.basename(resolved)):
+        raise ValueError("[WD14Tagger] Refusing an output path outside the WD14Tagger temporary-file namespace.")
+    return resolved
+
+
+def _validated_model_directory(model_directory: str, model_id: str) -> str:
+    """Require the model path shape produced by SwarmUI's configured model roots."""
+    default_model_dir = os.path.join(
+        _EXT_DIR, "..", "..", "..", "Models", "wd14_tagger", model_id.replace("/", "_")
+    )
+    resolved = os.path.realpath(os.path.abspath(os.path.expanduser((model_directory or "").strip() or default_model_dir)))
+    expected_leaf = model_id.replace("/", "_")
+    if os.path.basename(resolved) != expected_leaf or os.path.basename(os.path.dirname(resolved)).lower() != "wd14_tagger":
+        raise ValueError("[WD14Tagger] Refusing a model directory outside the expected wd14_tagger/model-id layout.")
+    return resolved
+
+
+def _validated_threshold(value, name: str) -> float:
+    """Validate thresholds before forwarding them to the inference process."""
+    parsed = float(value)
+    if not math.isfinite(parsed) or (parsed != -1.0 and not 0.0 <= parsed <= 1.0):
+        raise ValueError(f"[WD14Tagger] {name} must be between 0.0 and 1.0, or -1.0 to disable it.")
+    return parsed
+
+
 class WD14TaggerGenerate:
     """Generate tags from an input image and write them to output_path on disk."""
 
@@ -109,39 +150,40 @@ class WD14TaggerGenerate:
         import numpy as np
         from PIL import Image as PILImage
 
-        if not output_path:
-            raise ValueError("[WD14Tagger] output_path must not be empty.")
+        model_id = require_supported_model(model_id)
+        output_path = _validated_output_path(output_path)
+        model_dir = _validated_model_directory(model_directory, model_id)
+        general_threshold = _validated_threshold(general_threshold, "general_threshold")
+        character_threshold = _validated_threshold(character_threshold, "character_threshold")
 
-        _ensure_deps()
+        _require_deps()
         _ensure_runtime_modules()
 
         temp_root = tempfile.mkdtemp(prefix="wd14tagger_")
         temp_image_path = os.path.join(temp_root, "image.png")
         script_path = os.path.join(_EXT_DIR, "wd14_tagger_inference.py")
-        default_model_dir = os.path.join(
-            _EXT_DIR, "..", "..", "..", "Models", "wd14_tagger", model_id.replace("/", "_")
-        )
-        model_dir = os.path.abspath(os.path.expanduser(model_directory.strip() or default_model_dir))
-
         try:
             image = 255.0 * images[0].cpu().numpy()
             image = PILImage.fromarray(image.clip(0, 255).astype(np.uint8))
             image.save(temp_image_path)
 
-            result = subprocess.run(
+            # The executable and script are fixed; every forwarded input is validated above.
+            result = subprocess.run(  # nosec B603
                 [
                     sys.executable,
                     script_path,
                     "--image_path", temp_image_path,
                     "--repo_id", model_id,
                     "--model_dir", model_dir,
-                    "--general_threshold", f"{float(general_threshold):.6f}",
-                    "--character_threshold", f"{float(character_threshold):.6f}",
+                    "--general_threshold", f"{general_threshold:.6f}",
+                    "--character_threshold", f"{character_threshold:.6f}",
                 ],
                 capture_output=True,
                 text=True,
                 cwd=_EXT_DIR,
                 env=_subprocess_env(),
+                timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+                check=False,
             )
             if result.stderr.strip():
                 print(f"[WD14Tagger] stderr: {result.stderr.strip()}")
@@ -154,8 +196,7 @@ class WD14TaggerGenerate:
                 )
             tags = _parse_result(result.stdout)
 
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as f:
+            with open(output_path, "x", encoding="utf-8") as f:
                 f.write(tags)
             print(f"[WD14Tagger] Saved tags to {output_path}")
         finally:

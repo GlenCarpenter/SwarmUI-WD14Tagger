@@ -152,16 +152,17 @@ That's it. When the files are already in that folder, the extension uses them di
   - `Pillow`
   - `numpy`
   - `huggingface_hub`
+  - `hf_xet`
 
-The extension will automatically install dependencies, but if you need to manually install run:
+Install the reviewed dependency set in the same Python environment used by the self-start ComfyUI backend:
 
 ```bash
-pip install onnxruntime Pillow numpy huggingface_hub
+python -m pip install -r requirements.txt
 ```
 
 > For GPU acceleration replace `onnxruntime` with `onnxruntime-gpu`.
 >
-> **Note:** Taggerine uses the existing Comfy Python runtime for `torch`, `torchvision`, `requests`, and `safetensors` rather than installing its own copies. The model checkpoint is still roughly 5.3 GB on first use.
+> **Note:** Taggerine uses the existing Comfy Python runtime for `torch`, `torchvision`, `requests`, and `safetensors`. AnimeTimm models without an ONNX export additionally require `timm`. The extension never runs `pip install` during startup or a generation. The Taggerine model checkpoint is still roughly 5.3 GB on first use.
 
 ---
 
@@ -171,7 +172,7 @@ pip install onnxruntime Pillow numpy huggingface_hub
 
    ```bash
    cd SwarmUI/src/Extensions
-   git clone https://github.com/GlenCarpenter/SwarmUI-WD14Tagger.git
+   git clone https://github.com/FurkanGozukara/SwarmUI-WD14Tagger.git
    ```
 
 2. Rebuild and restart SwarmUI. The extension will be picked up automatically.
@@ -200,6 +201,16 @@ C:/AI/Models/wd14_tagger/SmilingWolf_wd-eva02-large-tagger-v3/selected_tags.csv
 ```
 
 When multiple roots are configured, the extension uses the first root in `ModelRoot` order that already contains a complete copy of the selected model. If no complete copy exists, required files are downloaded under the root selected by `DownloadToRootID`.
+
+### Security model
+
+- API and Comfy-node requests only accept the model IDs shown in the Supported Models table.
+- Every HuggingFace download is pinned to an immutable, reviewed repository revision in `wd14tagger/models.py`.
+- Taggerine's downloaded Python inference runtime is pinned and must pass its expected SHA-256 hash before it can be imported.
+- Output files are restricted to random `wd14tagger_*.txt` files in the operating system temporary directory.
+- Python packages are never installed automatically while SwarmUI is running.
+
+Updating a model revision is therefore an explicit code change that can be reviewed before release.
 
 If `<wd14tagger>` is already present anywhere in the prompt when the button is clicked, the tag is replaced in-place with the generated tags. Otherwise the **Insert Mode** (Replace / Prepend / Append) controls where tags are inserted.
 

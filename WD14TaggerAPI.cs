@@ -44,14 +44,17 @@ public static class WD14TaggerAPI
         API.RegisterAPICall(WD14TaggerApplyFilters, true, WD14TaggerPermissions.PermGenerateTags);
     }
 
-    /// <summary>Allowed characters in a HuggingFace repo ID (namespace/repo-name).</summary>
-    private static readonly Regex SafeRepoIdPattern = new(@"^[A-Za-z0-9_\-/\.]+$", RegexOptions.Compiled);
-
     /// <summary>Matches a trailing prompt-weight suffix like ":1.3" on a tag's core text.</summary>
     private static readonly Regex TrailingWeightPattern = new(@":\s*\d+(?:\.\d+)?\s*$", RegexOptions.Compiled);
 
     /// <summary>Maximum allowed byte length for the filterTags string.</summary>
     private const int MaxFilterTagsLength = 4096;
+
+    /// <summary>Maximum accepted base64 payload length (48 MiB decoded at most).</summary>
+    private const int MaxImageBase64Length = 64 * 1024 * 1024;
+
+    /// <summary>Maximum tag text length accepted by the filter-only API.</summary>
+    private const int MaxTagsLength = 1024 * 1024;
 
     /// <summary>Returns this model's directory under every configured SwarmUI model root.</summary>
     private static List<string> GetModelDirectories(string modelId)
@@ -537,15 +540,20 @@ public static class WD14TaggerAPI
         {
             return new JObject { ["success"] = false, ["error"] = "No image data provided." };
         }
-        if (string.IsNullOrWhiteSpace(modelId) || !SafeRepoIdPattern.IsMatch(modelId))
+        if (imageBase64.Length > MaxImageBase64Length)
         {
-            return new JObject { ["success"] = false, ["error"] = "Invalid model ID format." };
+            return new JObject { ["success"] = false, ["error"] = "Image data is too large. The maximum decoded size is 48 MiB." };
         }
-        if ((generalThreshold < 0f && generalThreshold != -1f) || generalThreshold > 1f)
+        modelId = modelId?.Trim();
+        if (string.IsNullOrWhiteSpace(modelId) || !WD14TaggerExtension.AvailableModelIds.Contains(modelId, StringComparer.Ordinal))
+        {
+            return new JObject { ["success"] = false, ["error"] = "Unsupported WD14 Tagger model ID." };
+        }
+        if (!float.IsFinite(generalThreshold) || (generalThreshold < 0f && generalThreshold != -1f) || generalThreshold > 1f)
         {
             return new JObject { ["success"] = false, ["error"] = "General threshold must be between 0.0 and 1.0, or -1.0 to disable." };
         }
-        if ((characterThreshold < 0f && characterThreshold != -1f) || characterThreshold > 1f)
+        if (!float.IsFinite(characterThreshold) || (characterThreshold < 0f && characterThreshold != -1f) || characterThreshold > 1f)
         {
             return new JObject { ["success"] = false, ["error"] = "Character threshold must be between 0.0 and 1.0, or -1.0 to disable." };
         }
@@ -637,6 +645,10 @@ public static class WD14TaggerAPI
         if (string.IsNullOrWhiteSpace(tags))
         {
             return Task.FromResult(new JObject { ["success"] = true, ["tags"] = "" });
+        }
+        if (tags.Length > MaxTagsLength)
+        {
+            return Task.FromResult(new JObject { ["success"] = false, ["error"] = "Tag text is too large to filter." });
         }
         filterTags = SanitizeFilterTags(filterTags);
         FilterTagRules filterRules = ParseFilterTagRules(filterTags);

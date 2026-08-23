@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import os
 import sys
 
@@ -9,6 +10,7 @@ from .animetimm import is_animetimm_repo, run_animetimm_inference
 from .camie import CAMIE_MODELS, run_camie_inference
 from .common import TaggerUserError
 from .joytag import JOYTAG_REPO_ID, run_joytag_inference
+from .models import require_supported_model
 from .pixai import PIXAI_REPO_ID, run_pixai_inference
 from .taggerine import TAGGERINE_REPO_ID, run_taggerine_inference
 from .wd14 import run_wd14_inference
@@ -60,18 +62,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _validate_threshold(value: float, name: str) -> float:
+    """Reject non-finite and out-of-range confidence thresholds."""
+    if not math.isfinite(value) or (value != -1.0 and not 0.0 <= value <= 1.0):
+        raise TaggerUserError(f"{name} must be between 0.0 and 1.0, or -1.0 to disable it.")
+    return value
+
+
 def main() -> None:
     """Stable CLI wrapper used by the C# API and Comfy node."""
     parser = build_parser()
     args = parser.parse_args()
-    model_dir = args.model_dir or os.path.join("Models", "wd14_tagger", args.repo_id.replace("/", "_"))
     try:
+        try:
+            repo_id = require_supported_model(args.repo_id)
+        except ValueError as ex:
+            raise TaggerUserError(str(ex)) from ex
+        general_threshold = _validate_threshold(args.general_threshold, "General threshold")
+        character_threshold = _validate_threshold(args.character_threshold, "Character threshold")
+        model_dir = args.model_dir or os.path.join("Models", "wd14_tagger", repo_id.replace("/", "_"))
         tags = run_inference_for_repo(
             args.image_path,
-            args.repo_id,
+            repo_id,
             model_dir,
-            args.general_threshold,
-            args.character_threshold,
+            general_threshold,
+            character_threshold,
         )
         print(json.dumps({"success": True, "tags": tags}), flush=True)
     except TaggerUserError as ex:

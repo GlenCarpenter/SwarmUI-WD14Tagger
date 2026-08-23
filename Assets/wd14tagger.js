@@ -15,12 +15,27 @@
  * @param {string} src - Image URL or data-URL passed by registerMediaButton.
  */
 async function wd14TaggerGetImageBase64(src) {
+    if (typeof src != 'string' || !src) {
+        return null;
+    }
     if (src.startsWith('data:')) {
-        let b64 = src.split(',')[1];
+        if (!src.startsWith('data:image/') || !src.includes(';base64,')) {
+            throw new Error('The current media is not a base64-encoded image.');
+        }
+        let b64 = src.slice(src.indexOf(',') + 1);
         return b64 || null;
     }
     let fetchResponse = await fetch(src);
+    if (!fetchResponse.ok) {
+        throw new Error(`Image request failed with HTTP ${fetchResponse.status}.`);
+    }
     let blob = await fetchResponse.blob();
+    if (blob.type && !blob.type.startsWith('image/')) {
+        throw new Error('The selected media is not an image.');
+    }
+    if (blob.size > 48 * 1024 * 1024) {
+        throw new Error('The selected image is larger than 48 MiB.');
+    }
     return new Promise((resolve, reject) => {
         let reader = new FileReader();
         reader.onloadend = () => {
@@ -63,9 +78,11 @@ async function handleWD14GenerateTags(src) {
 
     let modelId = modelElem ? modelElem.value : 'SmilingWolf/wd-eva02-large-tagger-v3';
     let generalEnabled = !generalToggleElem || generalToggleElem.checked;
-    let generalThreshold = generalEnabled ? (parseFloat(generalThresholdElem ? generalThresholdElem.value : '0.35') || 0.35) : -1;
+    let parsedGeneralThreshold = Number.parseFloat(generalThresholdElem ? generalThresholdElem.value : '0.35');
+    let generalThreshold = generalEnabled ? (Number.isFinite(parsedGeneralThreshold) ? parsedGeneralThreshold : 0.35) : -1;
     let characterEnabled = !characterToggleElem || characterToggleElem.checked;
-    let characterThreshold = characterEnabled ? (parseFloat(characterThresholdElem ? characterThresholdElem.value : '0.85') || 0.85) : -1;
+    let parsedCharacterThreshold = Number.parseFloat(characterThresholdElem ? characterThresholdElem.value : '0.85');
+    let characterThreshold = characterEnabled ? (Number.isFinite(parsedCharacterThreshold) ? parsedCharacterThreshold : 0.85) : -1;
     let filterTags = filterTagsElem ? filterTagsElem.value : '';
     let insertMode = insertModeElem ? insertModeElem.value : 'replace';
     let promptBox = document.getElementById('alt_prompt_textbox');
@@ -73,7 +90,7 @@ async function handleWD14GenerateTags(src) {
     let promptTagMatch = existingPrompt.match(/<wd14tagger(?::([^>]+))?>/i);
     if (promptTagMatch && promptTagMatch[1] && promptTagMatch[1].trim()) {
         let promptTagSettings = wd14TaggerParsePromptTagArgs(promptTagMatch[1]);
-        if (promptTagSettings.modelId) {
+        if (promptTagSettings.modelId && wd14TaggerGetAvailableModelIds().includes(promptTagSettings.modelId)) {
             modelId = promptTagSettings.modelId;
         }
         if (promptTagSettings.generalThreshold !== null) {
@@ -172,6 +189,14 @@ function wd14TaggerGetAvailableModels() {
         return [...modelElem.options].map(o => o.value).filter(v => v);
     }
     return [];
+}
+
+/** Returns normalized model IDs without any optional display-label suffix. */
+function wd14TaggerGetAvailableModelIds() {
+    return wd14TaggerGetAvailableModels().map(value => {
+        let rawValue = typeof value == 'string' ? value : (value && value.value ? value.value : '');
+        return rawValue.split('///')[0];
+    }).filter(value => value);
 }
 
 /** Defaults both threshold toggles to enabled on first load (no user cookie). */
