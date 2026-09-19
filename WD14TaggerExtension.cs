@@ -11,7 +11,7 @@ using SwarmUI.Utils;
 
 namespace GlenCarpenter.Extensions.WD14TaggerExtension;
 
-/// <summary>WD14Tagger - image tagging using SmilingWolf WD14 ONNX models from HuggingFace.</summary>
+/// <summary>WD14Tagger - image tagging using HuggingFace-hosted tagger models.</summary>
 public class WD14TaggerExtension : Extension
 {
     /// <summary>Path to this extension's directory, stored for use by the static API class.</summary>
@@ -31,6 +31,7 @@ public class WD14TaggerExtension : Extension
         "SmilingWolf/wd-v1-4-swinv2-tagger-v2",
         "SmilingWolf/wd-v1-4-vit-tagger-v2",
         "SmilingWolf/wd-v1-4-convnext-tagger-v2",
+        "pixai-labs/pixai-tagger-v1.0",
         "deepghs/pixai-tagger-v0.9-onnx",
         "fancyfeast/joytag",
         "Camais03/camie-tagger",
@@ -55,6 +56,7 @@ public class WD14TaggerExtension : Extension
         "SmilingWolf/wd-v1-4-swinv2-tagger-v2///WD SwinV2 v2",
         "SmilingWolf/wd-v1-4-vit-tagger-v2///WD ViT v2",
         "SmilingWolf/wd-v1-4-convnext-tagger-v2///WD ConvNext v2",
+        "pixai-labs/pixai-tagger-v1.0///PixAI Tagger v1.0",
         "deepghs/pixai-tagger-v0.9-onnx///PixAI Tagger v0.9",
         "fancyfeast/joytag///JoyTag",
         "Camais03/camie-tagger///Camie Tagger v1",

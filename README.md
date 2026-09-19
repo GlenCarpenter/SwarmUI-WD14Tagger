@@ -1,6 +1,6 @@
 # SwarmUI WD14 Tagger Extension
 
-A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using HuggingFace-hosted booru taggers, including models from [SmilingWolf](https://huggingface.co/SmilingWolf), [deepghs](https://huggingface.co/deepghs), [fancyfeast](https://huggingface.co/fancyfeast), [Camais03](https://huggingface.co/Camais03), and [lodestones](https://huggingface.co/lodestones).
+A [SwarmUI](https://github.com/mcmonkeyprojects/SwarmUI) extension that adds automatic image tagging using HuggingFace-hosted booru taggers, including models from [SmilingWolf](https://huggingface.co/SmilingWolf), [PixAI Labs](https://huggingface.co/pixai-labs), [deepghs](https://huggingface.co/deepghs), [fancyfeast](https://huggingface.co/fancyfeast), [Camais03](https://huggingface.co/Camais03), and [lodestones](https://huggingface.co/lodestones).
 
 Generate tags from any image in the viewer with one click, or use the `<wd14tagger>` prompt tag to auto-tag at generation time.
 
@@ -33,6 +33,7 @@ Generate tags from any image in the viewer with one click, or use the `<wd14tagg
 | WD SwinV2 v2 | `SmilingWolf/wd-v1-4-swinv2-tagger-v2` |
 | WD ViT v2 | `SmilingWolf/wd-v1-4-vit-tagger-v2` |
 | WD ConvNext v2 | `SmilingWolf/wd-v1-4-convnext-tagger-v2` |
+| PixAI Tagger v1.0 | `pixai-labs/pixai-tagger-v1.0` |
 | PixAI Tagger v0.9 | `deepghs/pixai-tagger-v0.9-onnx` |
 | JoyTag | `fancyfeast/joytag` |
 | Camie Tagger v1 | `Camais03/camie-tagger` |
@@ -66,16 +67,18 @@ Trained on Danbooru. The gold standard for anime/illustration tagging — well-t
 
 ---
 
-#### PixAI Tagger v0.9
+#### PixAI Tagger v1.0 / v0.9
 
 Trained by pixai labs https://pixai.art/
 
-This extension uses the ONNX export published by [DeepGHS](https://huggingface.co/deepghs/pixai-tagger-v0.9-onnx) for local inference.
+PixAI Tagger v1.0 uses PixAI Labs' Transformers/Safetensors release at 1008 × 1008 resolution. It covers 30,877 tags split across general, character, style, copyright, meta, and rating categories. The extension maps character tags to the Character Threshold, maps all other non-rating categories to the General Threshold, and excludes rating tags.
 
-Also trained on Danbooru, but from a snapshot through early 2025 — more recent than the WD v3 training data. Output format and threshold behaviour are compatible with WD v3.
+For v0.9, this extension uses the ONNX export published by [DeepGHS](https://huggingface.co/deepghs/pixai-tagger-v0.9-onnx) for local inference.
+
+Both are trained on Danbooru data newer than the WD v3 training set. v1.0 has a May 2026 cutoff and substantially expands the v0.9 vocabulary.
 
 **Excels at:** newer characters and tags that post-date the WD v3 training cutoff.  
-**Struggles with:** the same failure modes as WD otherwise; still Danbooru-scoped.
+**Tradeoffs:** v1.0 is a much larger PyTorch model than the v0.9 ONNX export and requires more memory and download time.
 
 ---
 
@@ -152,11 +155,13 @@ That's it. When the files are already in that folder, the extension uses them di
   - `Pillow`
   - `numpy`
   - `huggingface_hub`
+   - `timm`
+   - `transformers`
 
 The extension will automatically install dependencies, but if you need to manually install run:
 
 ```bash
-pip install onnxruntime Pillow numpy huggingface_hub
+pip install onnxruntime Pillow numpy huggingface_hub timm transformers
 ```
 
 > For GPU acceleration replace `onnxruntime` with `onnxruntime-gpu`.
