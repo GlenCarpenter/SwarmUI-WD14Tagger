@@ -88,6 +88,7 @@ public static class WD14TaggerAPI
             "Camais03/camie-tagger" => ["model_initial.onnx", "model_initial_metadata.json"],
             "Camais03/camie-tagger-v2" => ["camie-tagger-v2.onnx", "camie-tagger-v2-metadata.json"],
             "lodestones/taggerine" => ["tagger_proto.safetensors", "tagger_vocab_with_categories_and_alias_updated.json", "inference_tagger_standalone.py"],
+            "pixai-labs/pixai-tagger-v1.0" => ["config.json", "preprocessor_config.json", "model.safetensors", "tagger_pipeline.py"],
             _ when modelId.StartsWith("animetimm/", StringComparison.OrdinalIgnoreCase) => ["selected_tags.csv", "categories.json", "preprocess.json"],
             _ => ["model.onnx", "selected_tags.csv"]
         };

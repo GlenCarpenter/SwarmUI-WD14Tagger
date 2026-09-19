@@ -19,7 +19,7 @@ _EXT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _ensure_deps():
     """Install the WD14Tagger Python requirements into the Comfy Python env if needed."""
     missing = []
-    for module_name in ["numpy", "PIL", "huggingface_hub", "onnxruntime"]:
+    for module_name in ["numpy", "PIL", "huggingface_hub", "onnxruntime", "timm", "transformers"]:
         try:
             __import__(module_name)
         except ImportError:

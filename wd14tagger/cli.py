@@ -10,6 +10,7 @@ from .camie import CAMIE_MODELS, run_camie_inference
 from .common import TaggerUserError
 from .joytag import JOYTAG_REPO_ID, run_joytag_inference
 from .pixai import PIXAI_REPO_ID, run_pixai_inference
+from .pixai_v1 import PIXAI_V1_REPO_ID, run_pixai_v1_inference
 from .taggerine import TAGGERINE_REPO_ID, run_taggerine_inference
 from .wd14 import run_wd14_inference
 
@@ -24,6 +25,8 @@ def run_inference_for_repo(image_path: str, repo_id: str, model_dir: str, genera
         return run_camie_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
     if repo_id == PIXAI_REPO_ID:
         return run_pixai_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
+    if repo_id == PIXAI_V1_REPO_ID:
+        return run_pixai_v1_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
     if is_animetimm_repo(repo_id):
         return run_animetimm_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
     return run_wd14_inference(image_path, repo_id, model_dir, general_threshold, character_threshold)
